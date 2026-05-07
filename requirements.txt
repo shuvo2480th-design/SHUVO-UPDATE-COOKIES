@@ -2,3 +2,4 @@ pyTelegramBotAPI
 instaloader
 pyotp
 PySocks
+flask
