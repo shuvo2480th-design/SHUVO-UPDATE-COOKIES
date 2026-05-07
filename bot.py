@@ -7,8 +7,25 @@ import threading
 import time
 import re
 import os
+from flask import Flask
+from threading import Thread
 from telebot import types
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
+# --- [KEEP ALIVE SYSTEM] এই অংশটি বটকে সার্ভারে সব সময় সচল রাখবে ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running 24/7!"
+
+def run_web_server():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_web_server)
+    t.start()
+# -------------------------------------------------------------------
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "8510677584:AAG_tzm8V6zgrO89anNIurPyT0KSPdmg6Ns"
@@ -18,7 +35,7 @@ OTP_GROUP_LINK = "https://t.me/tem_withh"
 API_KEY = "M_SX44INH5S"
 API_BASE = "https://stexsms.com/mapi/v1/public"
 
-# জয়েন করার চ্যানেল (নতুন ইউজারনেম আপডেট করা হয়েছে)
+# জয়েন করার চ্যানেল
 CHANNELS = ["range_channele"] 
 
 # ডাটাবেস ইউআরএল
@@ -324,5 +341,10 @@ def auto_otp_worker(chat_id, sid):
                     bot.send_message(chat_id, otp_msg, parse_mode="HTML", reply_markup=main_keyboard())
         time.sleep(5)
 
+# --- [মেইন এক্সিকিউশন] ---
 if __name__ == "__main__":
+    # প্রথমে জাগিয়ে রাখার সিস্টেম চালু হবে
+    keep_alive()
+    print("Cloud Hosting Server Started!")
+    # এরপর মেইন বট রান হবে
     bot.infinity_polling()
