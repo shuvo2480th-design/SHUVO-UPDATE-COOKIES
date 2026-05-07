@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import requests
 import time
 import telebot
@@ -15,15 +16,16 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "OTP Worker System is Online!"
+    return "OTP Worker System is Online & Running 24/7!"
 
 def run_web_server():
-    # পোর্ট ৮০৮১ রাখা হয়েছে যাতে bot.py এর সাথে সংঘর্ষ না হয়
-    app.run(host='0.0.0.0', port=8081)
+    # Render-এর জন্য পোর্ট ডাইনামিক করা হয়েছে
+    port = int(os.environ.get("PORT", 8081)) 
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_web_server)
-    t.setDaemon(True)
+    t.daemon = True # থ্রেডটি মেইন প্রোগ্রামের সাথে বন্ধ হবে না
     t.start()
 # ---------------------------------------------------------
 
@@ -39,7 +41,6 @@ bot = telebot.TeleBot(BOT_TOKEN)
 DB_FILE = "otp_history.pkl"
 
 def save_history(data):
-    # হিস্ট্রি ফাইল খুব বেশি বড় হয়ে গেলে পুরানোগুলো ছেঁটে ফেলার লজিক (ঐচ্ছিক)
     if len(data) > 500:
         keys = list(data.keys())
         for k in keys[:100]: del data[k]
@@ -56,12 +57,10 @@ def load_history():
 
 sent_history = load_history()
 
-# --- অটো ডিলিট ফাংশন (অবিকল রাখা হয়েছে) ---
 def delete_message_after_delay(chat_id, message_id, delay=90):
     time.sleep(delay)
     try:
         bot.delete_message(chat_id, message_id)
-        print(f"🗑️ Message {message_id} cleaned up.")
     except: pass
 
 def detect_language(otp_full):
@@ -82,8 +81,7 @@ def detect_service_tag(otp_full):
 
 def get_country_details(country_name):
     try:
-        # সার্চ অপ্টিমাইজ করা হয়েছে
-        country = pycountry.countries.get(name=country_name.title()) or pycountry.countries.search_fuzzy(country_name)[0]
+        country = pycountry.countries.search_fuzzy(country_name)[0]
         flag = "".join(chr(127397 + ord(c)) for c in country.alpha_2)
         return flag, country.alpha_2.upper()
     except:
@@ -99,8 +97,6 @@ def extract_real_otp(otp_full):
 def send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full):
     current_time = time.strftime("%H:%M")
     lang = detect_language(otp_full)
-    
-    # নাম্বার মাস্কিং লজিক
     masked_number = f"{number[:4]}★★{number[-4:]}" if len(number) > 8 else number
 
     text = (
@@ -117,36 +113,29 @@ def send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full):
 
     try:
         sent_msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
-        # ব্যাকগ্রাউন্ড থ্রেডে ডিলিট ফাংশন রান করা
         threading.Thread(target=delete_message_after_delay, args=(CHANNEL_ID, sent_msg.message_id), daemon=True).start()
     except Exception as e:
         print(f"❌ Send Error: {e}")
 
-# --- মেইন লুপ ---
 def main_otp_loop():
     print("🚀 OTP Worker is scanning for codes...")
-    # API রিকোয়েস্টের জন্য হেডার
     headers = {
         "mapikey": API_KEY,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0"
     }
     
     while True:
         try:
             res = requests.get(f"{API_BASE}/numsuccess/info", headers=headers, timeout=15).json()
-            
             if res and res.get("meta", {}).get("status") == "success":
                 otps = res.get("data", {}).get("otps", [])
                 for otp_entry in otps:
                     number = str(otp_entry.get("number", ""))
                     otp_full = str(otp_entry.get("otp", "")).strip()
-                    
                     otp_code = extract_real_otp(otp_full)
                     service_tag = detect_service_tag(otp_full)
                     
                     if not number or not otp_code: continue
-                    
-                    # ডুপ্লিকেট চেক
                     if number in sent_history and otp_code in sent_history[number]: continue
                     
                     if number not in sent_history: sent_history[number] = []
@@ -155,12 +144,11 @@ def main_otp_loop():
                     
                     flag, short_code = get_country_details(otp_entry.get("country", "Unknown"))
                     send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full)
-                    print(f"✅ New OTP Forwarded: {number}")
                             
         except Exception as e: 
             print(f"⚠️ Worker Warning: {e}")
             
-        time.sleep(5) # API রেট লিমিট এড়াতে ৫ সেকেন্ড বিরতি
+        time.sleep(5)
 
 if __name__ == "__main__":
     keep_alive()
