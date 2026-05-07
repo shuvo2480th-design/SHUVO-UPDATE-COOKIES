@@ -7,12 +7,13 @@ import threading
 import time
 import re
 import os
+import subprocess
 from flask import Flask
 from threading import Thread
 from telebot import types
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- [KEEP ALIVE SYSTEM] এই অংশটি বটকে সার্ভারে সব সময় সচল রাখবে ---
+# --- [KEEP ALIVE SYSTEM] ---
 app = Flask('')
 
 @app.route('/')
@@ -20,12 +21,22 @@ def home():
     return "Both Bot & OTP Worker are running 24/7!"
 
 def run_web_server():
-    app.run(host='0.0.0.0', port=8080)
+    # Render-এর পোর্টে Flask রান করা
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_web_server)
     t.start()
-# -------------------------------------------------------------------
+
+# --- [OTP.PY RUNNER] ---
+def run_otp_worker():
+    # এটি আলাদা একটি প্রোসেসে otp.py রান করবে
+    try:
+        print("Starting otp.py...")
+        subprocess.Popen(["python", "otp.py"])
+    except Exception as e:
+        print(f"Error starting otp.py: {e}")
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "8510677584:AAG_tzm8V6zgrO89anNIurPyT0KSPdmg6Ns"
@@ -35,10 +46,7 @@ OTP_GROUP_LINK = "https://t.me/tem_withh"
 API_KEY = "M_SX44INH5S"
 API_BASE = "https://stexsms.com/mapi/v1/public"
 
-# জয়েন করার চ্যানেল
 CHANNELS = ["range_channele"] 
-
-# ডাটাবেস ইউআরএল
 FIREBASE_URL = "https://realtime-database-7310e-default-rtdb.firebaseio.com/users"
 # ----------------------------------------
 
@@ -134,7 +142,6 @@ def check_otp_from_list(target_number):
     except: pass
     return None
 
-# --- ব্রডকাস্ট লজিক ---
 @bot.message_handler(commands=['users'])
 def count_users(msg):
     if msg.chat.id != ADMIN_ID: return
@@ -159,7 +166,6 @@ def broadcast_handler(msg):
         except: failed += 1
     bot.edit_message_text(f"✅ ব্রডকাস্ট সম্পন্ন!\n\n🚀 সফল: {sent}\n❌ ব্যর্থ: {failed}", msg.chat.id, status_msg.message_id)
 
-# --- হ্যান্ডলারস ---
 @bot.message_handler(commands=['start'])
 def start(msg):
     user_id = msg.chat.id
@@ -256,7 +262,6 @@ def process_range(msg):
     if msg.text in ["📱 Get Number", "💰 Balance", "💸 Withdraw", "👨‍💼 ADMIN SUPPORT"]: return
     fetch_and_send_numbers(msg.chat.id, msg.text.strip())
 
-# --- আপডেট করা নাম্বার সেন্ডিং ফাংশন ---
 def fetch_and_send_numbers(chat_id, rng, message_id=None):
     try:
         if chat_id in user_active_sessions:
@@ -343,17 +348,13 @@ def auto_otp_worker(chat_id, sid):
 
 # --- [মেইন এক্সিকিউশন] ---
 if __name__ == "__main__":
-    # ১. প্রথমে ফ্ল্যাস্ক সার্ভার (Keep Alive) চালু হবে
+    # ১. প্রথমে ফ্ল্যাস্ক সার্ভার চালু হবে
     keep_alive()
     
-    # ২. otp.py ফাইলটিকেও ব্যাকগ্রাউন্ডে চালু করা হচ্ছে
-    # যাতে bot.py রান করলেই otp.py অটো রান হয়
-    def run_otp_worker():
-        os.system("python otp.py")
+    # ২. otp.py ব্যাকগ্রাউন্ডে চালু করা হচ্ছে
+    run_otp_worker()
     
-    Thread(target=run_otp_worker).start()
+    print("Server & OTP Worker Started!")
     
-    print("Cloud Hosting Server & OTP Worker Started!")
-    
-    # ৩. এরপর মেইন বট পোলিং শুরু হবে
+    # ৩. মেইন বট পোলিং
     bot.infinity_polling()
