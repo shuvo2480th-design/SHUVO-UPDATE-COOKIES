@@ -6,7 +6,24 @@ import os
 import pycountry
 import re
 import threading 
+from flask import Flask # নতুন যুক্ত
+from threading import Thread # নতুন যুক্ত
 from telebot import types
+
+# --- [KEEP ALIVE SYSTEM] এই অংশটি সার্ভারে বটকে জাগিয়ে রাখবে ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "OTP Bot is running!"
+
+def run_web_server():
+    app.run(host='0.0.0.0', port=8081) # এটি ৮০৮১ পোর্টে চলবে
+
+def keep_alive():
+    t = Thread(target=run_web_server)
+    t.start()
+# ---------------------------------------------------------
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "8764978166:AAEhHy4R82VK9FmygIyPAQaNxtYVfbx-eXY"
@@ -36,7 +53,7 @@ def delete_message_after_delay(chat_id, message_id, delay=90):
     time.sleep(delay)
     try:
         bot.delete_message(chat_id, message_id)
-        print(f"🗑️ Message {message_id} auto-deleted after 1m 30s.")
+        print(f"🗑️ Message {message_id} auto-deleted.")
     except Exception as e:
         print(f"❌ Could not delete: {e}")
 
@@ -87,7 +104,6 @@ def send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full):
 
     markup = types.InlineKeyboardMarkup()
     
-    # বাটন থেকে সব ইমোজি রিমুভ করা হয়েছে
     otp_btn = types.InlineKeyboardButton(
         text=f"{otp_code}", 
         copy_text=types.CopyTextButton(text=otp_code)
@@ -101,37 +117,42 @@ def send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full):
 
     sent_msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     
-    # ৯০ সেকেন্ড পর ডিলিট হওয়ার জন্য থ্রেড স্টার্ট
     threading.Thread(target=delete_message_after_delay, args=(CHANNEL_ID, sent_msg.message_id)).start()
 
-print("🚀 Bot is Starting with 1m 30s Auto-Delete...")
+# --- মেইন লুপ ফাংশন ---
+def main_otp_loop():
+    print("🚀 OTP Worker Loop Started...")
+    while True:
+        try:
+            url = f"{API_BASE}/numsuccess/info"
+            headers = {"mapikey": API_KEY}
+            res = requests.get(url, headers=headers, timeout=10).json()
+            
+            if res and isinstance(res.get("data"), dict):
+                otps = res["data"].get("otps", [])
+                for otp_entry in otps:
+                    number = str(otp_entry.get("number", ""))
+                    otp_full = str(otp_entry.get("otp", "")).strip()
+                    
+                    otp_code = extract_real_otp(otp_full)
+                    service_tag = detect_service_tag(otp_full)
+                    
+                    if not number or not otp_code: continue
+                    if number in sent_history and otp_code in sent_history[number]: continue
+                    
+                    if number not in sent_history: sent_history[number] = []
+                    sent_history[number].append(otp_code)
+                    save_history(sent_history)
+                    
+                    flag, short_code = get_country_details(otp_entry.get("country", "Unknown"))
+                    send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full)
+                    print(f"✅ OTP Sent (Deletes in 90s)")
+                            
+        except Exception as e: 
+            print(f"⚠️ Error: {e}")
+        time.sleep(4)
 
-while True:
-    try:
-        url = f"{API_BASE}/numsuccess/info"
-        headers = {"mapikey": API_KEY}
-        res = requests.get(url, headers=headers, timeout=10).json()
-        
-        if res and isinstance(res.get("data"), dict):
-            otps = res["data"].get("otps", [])
-            for otp_entry in otps:
-                number = str(otp_entry.get("number", ""))
-                otp_full = str(otp_entry.get("otp", "")).strip()
-                
-                otp_code = extract_real_otp(otp_full)
-                service_tag = detect_service_tag(otp_full)
-                
-                if not number or not otp_code: continue
-                if number in sent_history and otp_code in sent_history[number]: continue
-                
-                if number not in sent_history: sent_history[number] = []
-                sent_history[number].append(otp_code)
-                save_history(sent_history)
-                
-                flag, short_code = get_country_details(otp_entry.get("country", "Unknown"))
-                send_styled_otp(number, flag, short_code, otp_code, service_tag, otp_full)
-                print(f"✅ OTP Sent (Deletes in 90s)")
-                        
-    except Exception as e: 
-        print(f"⚠️ Error: {e}")
-    time.sleep(4)
+# --- রান করার অংশ ---
+if __name__ == "__main__":
+    keep_alive()
+    main_otp_loop()
