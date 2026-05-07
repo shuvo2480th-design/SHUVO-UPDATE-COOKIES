@@ -17,7 +17,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive and running 24/7!"
+    return "Both Bot & OTP Worker are running 24/7!"
 
 def run_web_server():
     app.run(host='0.0.0.0', port=8080)
@@ -343,8 +343,17 @@ def auto_otp_worker(chat_id, sid):
 
 # --- [মেইন এক্সিকিউশন] ---
 if __name__ == "__main__":
-    # প্রথমে জাগিয়ে রাখার সিস্টেম চালু হবে
+    # ১. প্রথমে ফ্ল্যাস্ক সার্ভার (Keep Alive) চালু হবে
     keep_alive()
-    print("Cloud Hosting Server Started!")
-    # এরপর মেইন বট রান হবে
+    
+    # ২. otp.py ফাইলটিকেও ব্যাকগ্রাউন্ডে চালু করা হচ্ছে
+    # যাতে bot.py রান করলেই otp.py অটো রান হয়
+    def run_otp_worker():
+        os.system("python otp.py")
+    
+    Thread(target=run_otp_worker).start()
+    
+    print("Cloud Hosting Server & OTP Worker Started!")
+    
+    # ৩. এরপর মেইন বট পোলিং শুরু হবে
     bot.infinity_polling()
