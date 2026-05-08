@@ -152,16 +152,35 @@ def add_button(msg):
     except:
         bot.reply_to(msg, "❌ ফরম্যাট: `/add Name : RangeID`")
 
+# --- আপডেটেড স্মার্ট ডিলিট লজিক (ছোট/বড় হাতের অক্ষর বা আংশিক মিললেই ডিলিট) ---
 @bot.message_handler(commands=['del'])
 def delete_button(msg):
     if msg.chat.id != ADMIN_ID: return
-    name = msg.text.replace("/del", "").strip()
-    if name in services_db:
-        del services_db[name]
+    # ইনপুটকে ছোট হাতের অক্ষরে রূপান্তর করা হচ্ছে
+    search_text = msg.text.replace("/del", "").strip().lower()
+    
+    if not search_text:
+        bot.reply_to(msg, "❌ ডিলিট করতে বাটনের নাম বা নামের অংশ লিখুন।")
+        return
+
+    found_key = None
+    # ডাটাবেসের নামগুলোকেও ছোট হাতের করে চেক করা হচ্ছে
+    for name in list(services_db.keys()):
+        if search_text in name.lower(): 
+            found_key = name
+            break
+            
+    if found_key:
+        del services_db[found_key]
         save_db()
-        bot.reply_to(msg, f"🗑 '{name}' ডিলিট হয়েছে।")
+        bot.reply_to(msg, f"🗑 **'{found_key}'** সফলভাবে ডিলিট হয়েছে।")
     else:
-        bot.reply_to(msg, "❌ বাটন পাওয়া যায়নি।")
+        all_btns = "\n".join([f"`{n}`" for n in services_db.keys()])
+        error_txt = (
+            f"❌ কোনো মিল পাওয়া যায়নি!\n\n"
+            f"বর্তমানে থাকা বাটনগুলো:\n{all_btns if all_btns else 'কোনো বাটন নেই'}"
+        )
+        bot.reply_to(msg, error_txt, parse_mode="Markdown")
 
 @bot.message_handler(commands=['users'])
 def count_users(msg):
@@ -301,7 +320,6 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
             )
             
             markup = InlineKeyboardMarkup(row_width=1)
-            # টেক্সটে শুধু নাম্বার কিন্তু কপি করলে + সহ হবে
             if raw_n1:
                 markup.add(InlineKeyboardButton(text=f"{flag} {raw_n1}", copy_text=types.CopyTextButton(text=f"+{raw_n1}")))
             if raw_n2:
@@ -380,7 +398,7 @@ def auto_otp_worker(chat_id, sid):
         time.sleep(5)
 
 if __name__ == "__main__":
-    keep_alive() # রেন্ডারে ২৪ ঘণ্টা সচল রাখবে
+    keep_alive()
     bot.remove_webhook()
     print("Bot is Starting...")
     bot.infinity_polling()
