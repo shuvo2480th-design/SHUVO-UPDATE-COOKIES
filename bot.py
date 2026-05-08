@@ -38,7 +38,6 @@ API_BASE = "https://stexsms.com/mapi/v1/public"
 CHANNELS = ["range_channele"] 
 FIREBASE_URL = "https://realtime-database-7310e-default-rtdb.firebaseio.com/users"
 
-# বাটন ডাটাবেস ফাইল
 DB_FILE = "buttons_db.json"
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "r") as f:
@@ -55,7 +54,6 @@ def save_db():
     with open(DB_FILE, "w") as f:
         json.dump(services_db, f)
 
-# --- চ্যানেল জয়েন চেক ফাংশন ---
 def is_joined(user_id):
     if user_id == ADMIN_ID: return True
     for channel in CHANNELS:
@@ -74,7 +72,6 @@ def force_join_markup():
     markup.add(InlineKeyboardButton("✅ Verify", callback_data="check_verify"))
     return markup
 
-# --- অনলাইন ডাটাবেস ফাংশন ---
 def get_user_balance(user_id):
     try:
         res = requests.get(f"{FIREBASE_URL}/{user_id}/balance.json", timeout=10)
@@ -143,7 +140,6 @@ def check_otp_from_list(target_number):
     except: pass
     return None
 
-# --- অ্যাডমিন বাটন কমান্ডস ---
 @bot.message_handler(commands=['add'])
 def add_button(msg):
     if msg.chat.id != ADMIN_ID: return
@@ -167,7 +163,6 @@ def delete_button(msg):
     else:
         bot.reply_to(msg, "❌ বাটন পাওয়া যায়নি।")
 
-# --- ব্রডকাস্ট লজিক ---
 @bot.message_handler(commands=['users'])
 def count_users(msg):
     if msg.chat.id != ADMIN_ID: return
@@ -179,7 +174,7 @@ def broadcast_handler(msg):
     if msg.chat.id != ADMIN_ID: return
     command_text = msg.text.replace("/send", "").strip()
     if not command_text:
-        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।", parse_mode="Markdown")
+        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।")
         return
     users = get_all_users()
     sent, failed = 0, 0
@@ -192,7 +187,6 @@ def broadcast_handler(msg):
         except: failed += 1
     bot.edit_message_text(f"✅ ব্রডকাস্ট সম্পন্ন!\n\n🚀 সফল: {sent}\n❌ ব্যর্থ: {failed}", msg.chat.id, status_msg.message_id)
 
-# --- হ্যান্ডলারস ---
 @bot.message_handler(commands=['start'])
 def start(msg):
     user_id = msg.chat.id
@@ -284,7 +278,6 @@ def ask_range(msg):
         
     bot.send_message(msg.chat.id, m_txt, reply_markup=markup)
 
-# --- নম্বর সেন্ডিং ফাংশন ---
 def fetch_and_send_numbers(chat_id, rng, message_id=None):
     try:
         if chat_id in user_active_sessions:
@@ -308,13 +301,15 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
             )
             
             markup = InlineKeyboardMarkup(row_width=1)
+            # টেক্সটে শুধু নাম্বার কিন্তু কপি করলে + সহ হবে
             if raw_n1:
-                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n1}", copy_text=types.CopyTextButton(text=raw_n1)))
+                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n1}", copy_text=types.CopyTextButton(text=f"+{raw_n1}")))
             if raw_n2:
-                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n2}", copy_text=types.CopyTextButton(text=raw_n2)))
+                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n2}", copy_text=types.CopyTextButton(text=f"+{raw_n2}")))
 
             markup.add(InlineKeyboardButton(text="🔄 Change Number", callback_data="change_direct"),
-                       InlineKeyboardButton(text="🔑 View OTP Group", url=OTP_GROUP_LINK))
+                       InlineKeyboardButton(text="🔑 View OTP Group", url=OTP_GROUP_LINK),
+                       InlineKeyboardButton(text="BACK 🔙", callback_data="back_to_services"))
             
             if message_id:
                 bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
@@ -322,7 +317,7 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
                 bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
             threading.Thread(target=auto_otp_worker, args=(chat_id, sid), daemon=True).start()
         else: 
-            bot.send_message(chat_id, "⚠️ এই রেঞ্জে নম্বর পাওয়া যায়নি।", reply_markup=main_keyboard())
+            bot.send_message(chat_id, "NO YET NUMBER ❌")
     except: pass
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -342,6 +337,10 @@ def handle_callbacks(call):
     elif call.data == "change_direct":
         rng = user_active_sessions.get(chat_id, {}).get('range')
         if rng: fetch_and_send_numbers(chat_id, rng, call.message.message_id)
+
+    elif call.data == "back_to_services":
+        bot.delete_message(chat_id, call.message.message_id)
+        ask_range(call.message)
         
     elif "_" in call.data and chat_id == ADMIN_ID:
         action, rid = call.data.split("_")
@@ -380,7 +379,6 @@ def auto_otp_worker(chat_id, sid):
                     bot.send_message(chat_id, otp_msg, parse_mode="HTML", reply_markup=main_keyboard())
         time.sleep(5)
 
-# --- মূল রান করার অংশ ---
 if __name__ == "__main__":
     keep_alive() # রেন্ডারে ২৪ ঘণ্টা সচল রাখবে
     bot.remove_webhook()
