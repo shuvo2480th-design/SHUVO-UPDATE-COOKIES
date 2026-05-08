@@ -19,11 +19,11 @@ app = Flask('')
 def home():
     return "Bot is Running Live!"
 
-def run():
+def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = Thread(target=run)
+    t = Thread(target=run_flask)
     t.start()
 # -------------------------------
 
@@ -38,9 +38,8 @@ API_BASE = "https://stexsms.com/mapi/v1/public"
 CHANNELS = ["range_channele"] 
 FIREBASE_URL = "https://realtime-database-7310e-default-rtdb.firebaseio.com/users"
 
-# বাটন সেভ করার ফাইল
+# বাটন ডাটাবেস ফাইল
 DB_FILE = "buttons_db.json"
-
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "r") as f:
         services_db = json.load(f)
@@ -144,7 +143,7 @@ def check_otp_from_list(target_number):
     except: pass
     return None
 
-# --- অ্যাডমিন বাটন ম্যানেজমেন্ট ---
+# --- অ্যাডমিন বাটন কমান্ডস ---
 @bot.message_handler(commands=['add'])
 def add_button(msg):
     if msg.chat.id != ADMIN_ID: return
@@ -180,7 +179,7 @@ def broadcast_handler(msg):
     if msg.chat.id != ADMIN_ID: return
     command_text = msg.text.replace("/send", "").strip()
     if not command_text:
-        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।")
+        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।", parse_mode="Markdown")
         return
     users = get_all_users()
     sent, failed = 0, 0
@@ -274,23 +273,15 @@ def ask_range(msg):
         bot.send_message(msg.chat.id, "⚠️ প্রথমে চ্যানেলে জয়েন করুন।", reply_markup=force_join_markup())
         return
     
-    markup = InlineKeyboardMarkup(row_width=2)
+    markup = InlineKeyboardMarkup(row_width=1)
     buttons = [InlineKeyboardButton(name, callback_data=f"stex_{rng}") for name, rng in services_db.items()]
     
     if buttons:
         markup.add(*buttons)
-        m_txt = (
-        "╔══════════════════════╗\n"
-        "     🚀 SYSTEM READY     \n"
-        "╚══════════════════════╝\n\n"
-        "➜ সার্ভিস সিলেক্ট করুন নিচে থেকে\n"
-        "──────────────────────\n"
-        "💡 Status: Waiting for selection...\n"
-        "──────────────────────"
-        )
+        m_txt = "Choose YOUR service 🌼"
     else:
         m_txt = "NO NUMBER UPLOAD ❌"
-
+        
     bot.send_message(msg.chat.id, m_txt, reply_markup=markup)
 
 # --- নম্বর সেন্ডিং ফাংশন ---
@@ -299,19 +290,28 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
         if chat_id in user_active_sessions:
             user_active_sessions[chat_id]['sid'] = 0
         data1, data2 = fetch_single_number(rng), fetch_single_number(rng)
-        num1, num2 = data1.get("full_number") or data1.get("number"), data2.get("full_number") or data2.get("number")
+        
+        raw_n1 = str(data1.get("full_number") or data1.get("number") or "").replace('+', '')
+        raw_n2 = str(data2.get("full_number") or data2.get("number") or "").replace('+', '')
+        
         country = data1.get("country") or "Unknown"
         flag = get_auto_flag(country)
-        if num1 or num2:
-            d1, d2 = (str(num1).replace('+', '') if num1 else "No stock"), (str(num2).replace('+', '') if num2 else "No stock")
+        
+        if raw_n1 or raw_n2:
             sid = time.time()
-            user_active_sessions[chat_id] = {'sid': sid, 'range': rng, 'n1': d1, 'n2': d2, 'c': country, 'f': flag, 'ids': []}
-            text = f"✅ **Number Successfully Assigned!**\n\n🌎 {country} {flag}\n🛠 **Service:** Facebook"
+            user_active_sessions[chat_id] = {'sid': sid, 'range': rng, 'n1': raw_n1, 'n2': raw_n2, 'c': country, 'f': flag, 'ids': []}
+            
+            text = (
+                f"✅ **Number Successfully Assigned!**\n\n"
+                f"🌎 {country} {flag}\n"
+                f"🛠 **Service:** Facebook"
+            )
+            
             markup = InlineKeyboardMarkup(row_width=1)
-            if d1 != "No stock":
-                markup.add(InlineKeyboardButton(text=f"{flag} {d1}", copy_text=types.CopyTextButton(text=d1)))
-            if d2 != "No stock":
-                markup.add(InlineKeyboardButton(text=f"{flag} {d2}", copy_text=types.CopyTextButton(text=d2)))
+            if raw_n1:
+                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n1}", copy_text=types.CopyTextButton(text=raw_n1)))
+            if raw_n2:
+                markup.add(InlineKeyboardButton(text=f"{flag} {raw_n2}", copy_text=types.CopyTextButton(text=raw_n2)))
 
             markup.add(InlineKeyboardButton(text="🔄 Change Number", callback_data="change_direct"),
                        InlineKeyboardButton(text="🔑 View OTP Group", url=OTP_GROUP_LINK))
@@ -322,7 +322,7 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
                 bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
             threading.Thread(target=auto_otp_worker, args=(chat_id, sid), daemon=True).start()
         else: 
-            bot.send_message(chat_id, "⚠️ এই রেঞ্জে নম্বর পাওয়া যায়নি।")
+            bot.send_message(chat_id, "⚠️ এই রেঞ্জে নম্বর পাওয়া যায়নি।", reply_markup=main_keyboard())
     except: pass
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -338,7 +338,7 @@ def handle_callbacks(call):
     elif call.data.startswith("stex_"):
         rng = call.data.split("_")[1]
         fetch_and_send_numbers(chat_id, rng, call.message.message_id)
-
+        
     elif call.data == "change_direct":
         rng = user_active_sessions.get(chat_id, {}).get('range')
         if rng: fetch_and_send_numbers(chat_id, rng, call.message.message_id)
@@ -360,7 +360,7 @@ def auto_otp_worker(chat_id, sid):
         data = user_active_sessions.get(chat_id)
         if not data or data.get('sid') != sid: break
         for cn in [data.get('n1'), data.get('n2')]:
-            if cn != "No stock":
+            if cn:
                 otp = check_otp_from_list(cn)
                 if otp and f"{cn}_{otp}" not in data['ids']:
                     data['ids'].append(f"{cn}_{otp}")
@@ -371,7 +371,7 @@ def auto_otp_worker(chat_id, sid):
                         f"📩 <b>NEW OTP RECEIVED</b>\n"
                         f"━━━━━━━━━━━━━━━\n"
                         f"🌍 Country: {data['c']} {data['f']}\n"
-                        f"📱 Number: <code>{cn}</code>\n"
+                        f"📱 Number: <code>+{cn}</code>\n"
                         f"🔑 OTP Code: <code>{otp}</code>\n"
                         f"━━━━━━━━━━━━━━━\n"
                         f"💰 Earned: <b>+0.20৳</b>\n"
@@ -380,8 +380,9 @@ def auto_otp_worker(chat_id, sid):
                     bot.send_message(chat_id, otp_msg, parse_mode="HTML", reply_markup=main_keyboard())
         time.sleep(5)
 
+# --- মূল রান করার অংশ ---
 if __name__ == "__main__":
-    keep_alive() # এটি রেন্ডারে বটকে সচল রাখবে
+    keep_alive() # রেন্ডারে ২৪ ঘণ্টা সচল রাখবে
     bot.remove_webhook()
     print("Bot is Starting...")
     bot.infinity_polling()
