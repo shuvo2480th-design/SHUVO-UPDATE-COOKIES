@@ -7,32 +7,25 @@ import threading
 import time
 import re
 import os
-import subprocess # otp.py চালানোর জন্য
-from flask import Flask # Render-এ চালু রাখার জন্য
+from flask import Flask
+from threading import Thread
 from telebot import types
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- [KEEP ALIVE & OTP RUNNER - এইটুকু শুধু এড করা হয়েছে] ---
+# --- RENDER KEEP-ALIVE SERVER ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is Running 24/7!"
+    return "Bot is Running Live!"
 
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+def run():
+    app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = threading.Thread(target=run_web_server)
-    t.daemon = True
+    t = Thread(target=run)
     t.start()
-
-def run_otp_worker():
-    try:
-        subprocess.Popen(["python", "otp.py"])
-    except Exception as e:
-        print(f"Error starting otp.py: {e}")
+# -------------------------------
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = "8510677584:AAG_tzm8V6zgrO89anNIurPyT0KSPdmg6Ns"
@@ -42,16 +35,26 @@ OTP_GROUP_LINK = "https://t.me/tem_withh"
 API_KEY = "M_SX44INH5S"
 API_BASE = "https://stexsms.com/mapi/v1/public"
 
-# জয়েন করার চ্যানেল (নতুন ইউজারনেম আপডেট করা হয়েছে)
 CHANNELS = ["range_channele"] 
-
-# ডাটাবেস ইউআরএল
 FIREBASE_URL = "https://realtime-database-7310e-default-rtdb.firebaseio.com/users"
+
+# বাটন সেভ করার ফাইল
+DB_FILE = "buttons_db.json"
+
+if os.path.exists(DB_FILE):
+    with open(DB_FILE, "r") as f:
+        services_db = json.load(f)
+else:
+    services_db = {}
 # ----------------------------------------
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_active_sessions = {}
 pending_withdraws = {}
+
+def save_db():
+    with open(DB_FILE, "w") as f:
+        json.dump(services_db, f)
 
 # --- চ্যানেল জয়েন চেক ফাংশন ---
 def is_joined(user_id):
@@ -141,6 +144,30 @@ def check_otp_from_list(target_number):
     except: pass
     return None
 
+# --- অ্যাডমিন বাটন ম্যানেজমেন্ট ---
+@bot.message_handler(commands=['add'])
+def add_button(msg):
+    if msg.chat.id != ADMIN_ID: return
+    try:
+        data = msg.text.replace("/add", "").strip()
+        name, rng = data.split(":")
+        services_db[name.strip()] = rng.strip()
+        save_db()
+        bot.reply_to(msg, f"✅ বাটন অ্যাড হয়েছে: {name.strip()}")
+    except:
+        bot.reply_to(msg, "❌ ফরম্যাট: `/add Name : RangeID`")
+
+@bot.message_handler(commands=['del'])
+def delete_button(msg):
+    if msg.chat.id != ADMIN_ID: return
+    name = msg.text.replace("/del", "").strip()
+    if name in services_db:
+        del services_db[name]
+        save_db()
+        bot.reply_to(msg, f"🗑 '{name}' ডিলিট হয়েছে।")
+    else:
+        bot.reply_to(msg, "❌ বাটন পাওয়া যায়নি।")
+
 # --- ব্রডকাস্ট লজিক ---
 @bot.message_handler(commands=['users'])
 def count_users(msg):
@@ -153,7 +180,7 @@ def broadcast_handler(msg):
     if msg.chat.id != ADMIN_ID: return
     command_text = msg.text.replace("/send", "").strip()
     if not command_text:
-        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।", parse_mode="Markdown")
+        bot.reply_to(msg, "❌ কমান্ডের সাথে মেসেজটি লিখুন।")
         return
     users = get_all_users()
     sent, failed = 0, 0
@@ -246,24 +273,27 @@ def ask_range(msg):
     if not is_joined(msg.chat.id):
         bot.send_message(msg.chat.id, "⚠️ প্রথমে চ্যানেলে জয়েন করুন।", reply_markup=force_join_markup())
         return
-    bot.clear_step_handler_by_chat_id(msg.chat.id)
-    m_txt = (
-"╔══════════════════════╗\n"
-"     🚀 SYSTEM READY     \n"
-"╚══════════════════════╝\n\n"
-"➜ আপনার নাম্বারের রেঞ্জটি লিখুন\n"
-"──────────────────────\n"
-"💡 Status: Waiting for input...\n"
-"──────────────────────"
-    )
-    bot.send_message(msg.chat.id, m_txt, reply_markup=main_keyboard())
-    bot.register_next_step_handler_by_chat_id(msg.chat.id, process_range)
+    
+    markup = InlineKeyboardMarkup(row_width=2)
+    buttons = [InlineKeyboardButton(name, callback_data=f"stex_{rng}") for name, rng in services_db.items()]
+    
+    if buttons:
+        markup.add(*buttons)
+        m_txt = (
+        "╔══════════════════════╗\n"
+        "     🚀 SYSTEM READY     \n"
+        "╚══════════════════════╝\n\n"
+        "➜ সার্ভিস সিলেক্ট করুন নিচে থেকে\n"
+        "──────────────────────\n"
+        "💡 Status: Waiting for selection...\n"
+        "──────────────────────"
+        )
+    else:
+        m_txt = "NO NUMBER UPLOAD ❌"
 
-def process_range(msg):
-    if msg.text in ["📱 Get Number", "💰 Balance", "💸 Withdraw", "👨‍💼 ADMIN SUPPORT"]: return
-    fetch_and_send_numbers(msg.chat.id, msg.text.strip())
+    bot.send_message(msg.chat.id, m_txt, reply_markup=markup)
 
-# --- আপডেট করা নাম্বার সেন্ডিং ফাংশন ---
+# --- নম্বর সেন্ডিং ফাংশন ---
 def fetch_and_send_numbers(chat_id, rng, message_id=None):
     try:
         if chat_id in user_active_sessions:
@@ -284,8 +314,7 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
                 markup.add(InlineKeyboardButton(text=f"{flag} {d2}", copy_text=types.CopyTextButton(text=d2)))
 
             markup.add(InlineKeyboardButton(text="🔄 Change Number", callback_data="change_direct"),
-                       InlineKeyboardButton(text="🔑 View OTP Group", url=OTP_GROUP_LINK),
-                       InlineKeyboardButton(text="◀️ CHANGE RANGE", callback_data="change_range_request"))
+                       InlineKeyboardButton(text="🔑 View OTP Group", url=OTP_GROUP_LINK))
             
             if message_id:
                 bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
@@ -293,7 +322,7 @@ def fetch_and_send_numbers(chat_id, rng, message_id=None):
                 bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
             threading.Thread(target=auto_otp_worker, args=(chat_id, sid), daemon=True).start()
         else: 
-            bot.send_message(chat_id, "⚠️ এই রেঞ্জে নম্বর পাওয়া যায়নি।", reply_markup=main_keyboard())
+            bot.send_message(chat_id, "⚠️ এই রেঞ্জে নম্বর পাওয়া যায়নি।")
     except: pass
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -305,12 +334,15 @@ def handle_callbacks(call):
             bot.delete_message(chat_id, call.message.message_id)
             start(call.message)
         else: bot.answer_callback_query(call.id, "❌ আপনি এখনো চ্যানেলে জয়েন করেননি!", show_alert=True)
+    
+    elif call.data.startswith("stex_"):
+        rng = call.data.split("_")[1]
+        fetch_and_send_numbers(chat_id, rng, call.message.message_id)
+
     elif call.data == "change_direct":
         rng = user_active_sessions.get(chat_id, {}).get('range')
         if rng: fetch_and_send_numbers(chat_id, rng, call.message.message_id)
-    elif call.data == "change_range_request":
-        bot.send_message(chat_id, "➜ আপনার নাম্বারের নতুন রেঞ্জটি লিখুন")
-        bot.register_next_step_handler_by_chat_id(chat_id, process_range)
+        
     elif "_" in call.data and chat_id == ADMIN_ID:
         action, rid = call.data.split("_")
         data = pending_withdraws.get(rid)
@@ -348,8 +380,8 @@ def auto_otp_worker(chat_id, sid):
                     bot.send_message(chat_id, otp_msg, parse_mode="HTML", reply_markup=main_keyboard())
         time.sleep(5)
 
-# --- [মেইন অংশ] ---
 if __name__ == "__main__":
-    keep_alive() # রেন্ডারের জন্য সার্ভার চালু করা
-    run_otp_worker() # otp.py আলাদাভাবে চালু করা
-    bot.infinity_polling() # বটের পোলিং
+    keep_alive() # এটি রেন্ডারে বটকে সচল রাখবে
+    bot.remove_webhook()
+    print("Bot is Starting...")
+    bot.infinity_polling()
