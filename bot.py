@@ -10,7 +10,7 @@ import traceback
 
 # ===================== কনফিগারেশন =====================
 API_KEY = "MUBTR1MKUBO"
-BOT_TOKEN = "8510677584:AAG-y26-o5m7hUit-mVA1OHAKgLtcTHaxbI"
+BOT_TOKEN = "8510677584:AAGTmKPpM9fWzc5xhzcSz2G7vHwHAfbRtbE"
 BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS = {"mauthapi": API_KEY}
 ADMIN_ID = "6136815573"
