@@ -34,11 +34,11 @@ def keep_alive():
 
 # কনফিগারেশন
 API_KEY = "MUBTR1MKUBO"
-BOT_TOKEN = "8510677584:AAFBV4Jn8OpLOfnUEoQuyiByLQ9pEKOKrRc"
+BOT_TOKEN = "8510677584:AAED9K6-P1gtaNU5Ca8_3k5NpLmJ4ZOpH2s" # নতুন টোকেন
 BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS = {"mauthapi": API_KEY}
 ADMIN_ID = "6136815573"
-GROUP_URL = "https://t.me/tem_withh"
+GROUP_URL = "https://t.me/tem_with" 
 
 users = {} 
 withdraw_data = {}
@@ -54,7 +54,7 @@ user_ranges = {}
 user_numbers = {}
 user_countries = {}
 service_buttons = {} 
-REQUIRED_CHANNELS = ["@A_ToolsX", "@tem_withh"] # আপডেট করা হয়েছে
+REQUIRED_CHANNELS = ["@tem_with"] 
 otp_running = {}   
 
 def safe_execute(func):
@@ -88,8 +88,7 @@ def is_joined(user_id):
 
 def join_markup():
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/A_ToolsX"))
-    kb.add(types.InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/tem_withh"))
+    kb.add(types.InlineKeyboardButton("📢 Join Channel", url="https://t.me/tem_with"))
     kb.add(types.InlineKeyboardButton("✅ VERIFIED", callback_data="verify_join"))
     return kb
 
@@ -97,7 +96,7 @@ def join_markup():
 @bot.message_handler(commands=['start'])
 def start(message):
     if not is_joined(message.from_user.id):
-        bot.send_message(message.chat.id, "🚀 To use this bot, you must join our channel: https://t.me/A_ToolsX", reply_markup=join_markup())
+        bot.send_message(message.chat.id, "⚠️ To use this bot, you must join our channel: https://t.me/tem_with", reply_markup=join_markup())
         return
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.row(types.KeyboardButton("📱 𝙶𝙴𝚃 𝙽𝚄𝙼𝙱𝙴𝚁"), types.KeyboardButton("📱 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝚄𝚈"))
@@ -184,7 +183,7 @@ def del_service(message):
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     if not is_joined(message.from_user.id):
-        bot.send_message(message.chat.id, "⚠️ দয়া করে চ্যানেলে জয়েন করুন।", reply_markup=join_markup())
+        bot.send_message(message.chat.id, "⚠️ To use this bot, you must join our channel: https://t.me/tem_with", reply_markup=join_markup())
         return
     if message.text == "📱 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝚄𝚈":
         msg = bot.send_message(message.chat.id, "⚙️ 𝙿𝙻𝙴𝙰𝚂𝙴 𝙴𝙽𝚃𝙴𝚁 𝚈𝙾𝚄𝚁 𝚁𝙰𝙽𝙶𝙴\n\n🔢 𝙴𝚡𝚊𝚖𝚙𝚕𝚎 : `2245564`", parse_mode="Markdown")
@@ -216,7 +215,7 @@ def auto_check_otp(chat_id, phone_number, country, search_msg_id=None):
     
     start_time = time.time()
     try:
-        while time.time() - start_time < 30: # সময় বাড়ানো হয়েছে
+        while time.time() - start_time < 30:
             response = session.get(f"{BASE_URL}/success-otp", timeout=15)
             if response.status_code == 200:
                 data = response.json()
