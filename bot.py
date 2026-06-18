@@ -8,24 +8,28 @@ import time
 import re
 import os
 import random
+import logging
+import traceback
 from flask import Flask
 from threading import Thread
 from telebot import types
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- RENDER KEEP-ALIVE SERVER ---
-app = Flask('')
+app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
     return "Bot is Running Live!"
 
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+@app.route("/health")
+def health():
+    return {"status": "online"}
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
 
 def keep_alive():
-    t = Thread(target=run_flask)
-    t.start()
+    Thread(target=run, daemon=True).start()
 # -------------------------------
 
 # কনফিগারেশন
@@ -36,37 +40,23 @@ HEADERS = {"mauthapi": API_KEY}
 ADMIN_ID = "6136815573"
 GROUP_URL = "https://t.me/tem_withh"
 
-# ব্যালেন্স ও উইথড্র ডাটাবেস
 users = {} 
 withdraw_data = {}
 
-# ===================== STABLE SESSION =====================
 session = requests.Session()
 session.headers.update(HEADERS)
 
-logging = __import__('logging')
-traceback = __import__('traceback')
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 
-logging.basicConfig(
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-bot = telebot.TeleBot(
-    BOT_TOKEN,
-    threaded=True,
-    num_threads=20
-)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 
 user_ranges = {}
 user_numbers = {}
 user_countries = {}
 service_buttons = {} 
-
-REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
+REQUIRED_CHANNELS = ["@A_ToolsX", "@tem_withh"] # আপডেট করা হয়েছে
 otp_running = {}   
 
-# ===================== GLOBAL ERROR PROTECTION =====================
 def safe_execute(func):
     def wrapper(*args, **kwargs):
         try:
@@ -98,7 +88,7 @@ def is_joined(user_id):
 
 def join_markup():
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/range_channele"))
+    kb.add(types.InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/A_ToolsX"))
     kb.add(types.InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/tem_withh"))
     kb.add(types.InlineKeyboardButton("✅ VERIFIED", callback_data="verify_join"))
     return kb
@@ -107,7 +97,7 @@ def join_markup():
 @bot.message_handler(commands=['start'])
 def start(message):
     if not is_joined(message.from_user.id):
-        bot.send_message(message.chat.id, "⚠️ বট ব্যবহার করার আগে নিচের দুইটি চ্যানেলে Join করুন এবং তারপর VERIFIED বাটনে চাপুন।", reply_markup=join_markup())
+        bot.send_message(message.chat.id, "🚀 To use this bot, you must join our channel: https://t.me/A_ToolsX", reply_markup=join_markup())
         return
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.row(types.KeyboardButton("📱 𝙶𝙴𝚃 𝙽𝚄𝙼𝙱𝙴𝚁"), types.KeyboardButton("📱 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝚄𝚈"))
@@ -115,19 +105,19 @@ def start(message):
     markup.add(types.KeyboardButton("👑 𝙰𝙳𝙼𝙸𝙽 𝚂𝚄𝙿𝙿𝙾𝚁𝚃"))
     bot.send_message(message.chat.id, "👋𓆩𓆩𝚆𝙴𝙻𝙲𝙾𝙼𝙴 𝚃𝙾 𝙾𝚃𝙿 𝚂𝙴𝚁𝚅𝙸𝙲𝙴𓆪𓆪\n\n🤖 𝚃𝙴𝙰𝙼 𝚆𝙸𝚃𝙷 3.0 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", reply_markup=markup)
 
-# --- এডমিন ব্যালেন্স কমান্ড ---
 @bot.message_handler(commands=['add_balance'])
 def add_bal(message):
     if str(message.from_user.id) != ADMIN_ID: return
     try:
-        _, uid, amt = message.text.split()
+        parts = message.text.split()
+        uid = parts[1]
+        amt = float(parts[2])
         if uid not in users: users[uid] = {"balance": 0}
-        users[uid]["balance"] += float(amt)
+        users[uid]["balance"] += amt
         bot.reply_to(message, f"✅ User {uid} balance updated by {amt} TK")
     except:
         bot.reply_to(message, "Usage: /add_balance <uid> <amount>")
 
-# --- প্রোফাইল হ্যান্ডলার ---
 @bot.message_handler(func=lambda message: message.text == "👤 𝙿𝚁𝙾𝙵𝙸𝙻𝙴")
 def show_profile(message):
     uid = str(message.from_user.id)
@@ -137,7 +127,6 @@ def show_profile(message):
     markup.add(types.InlineKeyboardButton("🏦 𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆", callback_data="withdraw"))
     bot.send_message(message.chat.id, profile_text, reply_markup=markup)
 
-# --- উইথড্র সিস্টেম ---
 @bot.callback_query_handler(func=lambda call: call.data == "withdraw")
 def withdraw_menu(call):
     uid = str(call.from_user.id)
@@ -160,16 +149,18 @@ def get_amount(message, method):
     bot.register_next_step_handler(msg, finalize_withdraw)
 
 def finalize_withdraw(message):
-    amt = int(message.text)
-    uid = str(message.from_user.id)
-    if amt < 20:
-        bot.send_message(message.chat.id, "❌ Min 20 TK")
-        return
-    users[uid]["balance"] -= amt
-    bot.send_message(message.chat.id, "✅ Request sent to Admin!")
-    bot.send_message(ADMIN_ID, f"💸 New Request\nID: {uid}\nAmount: {amt} TK\nMethod: {withdraw_data[uid]['method']}")
+    try:
+        amt = int(message.text)
+        uid = str(message.from_user.id)
+        if amt < 20:
+            bot.send_message(message.chat.id, "❌ Min 20 TK")
+            return
+        users[uid]["balance"] -= amt
+        bot.send_message(message.chat.id, "✅ Request sent to Admin!")
+        bot.send_message(ADMIN_ID, f"💸 New Request\nID: {uid}\nAmount: {amt} TK\nMethod: {withdraw_data[uid]['method']}")
+    except:
+        bot.send_message(message.chat.id, "❌ Invalid input.")
 
-# --- আগের ফাংশনগুলো ---
 @bot.message_handler(commands=['add'])
 def add_service(message):
     if str(message.from_user.id) != ADMIN_ID: return
@@ -219,94 +210,63 @@ def process_2fa(message):
 def auto_check_otp(chat_id, phone_number, country, search_msg_id=None):
     if otp_running.get(chat_id): return
     otp_running[chat_id] = True
-    
-    # OTP পাইলে ব্যালেন্স আপডেট
     uid = str(chat_id)
     if uid not in users: users[uid] = {"balance": 0}
     users[uid]["balance"] += 0.15
     
     start_time = time.time()
     try:
-        while time.time() - start_time < 15:
-            response = session.get(f"{BASE_URL}/success-otp", timeout=10)
-            data = response.json()
-            if data.get("meta", {}).get("code") == 200:
-                for item in data.get("data", {}).get("otps", []):
-                    if clean_number(item.get("number")) in clean_number(phone_number):
-                        otp = "".join(filter(str.isdigit, item.get("message", "")))[-6:]
-                        text = f"✅ OTP RECEIVED\n\n🟢 Country : {get_flag(country)} {country}\n📞 Number : +{phone_number}\n\n🔑 OTP : `{otp}`\n💰 𝙴𝚊𝚛𝚗 : 0.15 𝚃𝙺"
-                        kb = types.InlineKeyboardMarkup()
-                        kb.add(types.InlineKeyboardButton(text=otp, copy_text=types.CopyTextButton(text=otp)))
-                        if search_msg_id: bot.edit_message_text(text, chat_id, search_msg_id, parse_mode="Markdown", reply_markup=kb)
-                        else: bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
-                        return
-            time.sleep(2)
-        if search_msg_id:
-            kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("🔄 TRY AGAIN", callback_data="otp_search"))
-            bot.edit_message_text("❌ 𝙽𝚘 𝙾𝚃𝙿 𝙵𝚘𝚞𝚗𝚍", chat_id, search_msg_id, reply_markup=kb)
+        while time.time() - start_time < 30: # সময় বাড়ানো হয়েছে
+            response = session.get(f"{BASE_URL}/success-otp", timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("meta", {}).get("code") == 200:
+                    for item in data.get("data", {}).get("otps", []):
+                        if clean_number(item.get("number")) in clean_number(phone_number):
+                            otp = "".join(filter(str.isdigit, item.get("message", "")))[-6:]
+                            text = f"✅ OTP RECEIVED\n\n🟢 Country : {get_flag(country)} {country}\n📞 Number : +{phone_number}\n\n🔑 OTP : `{otp}`\n💰 𝙴𝚊𝚛𝚗 : 0.15 𝚃𝙺"
+                            kb = types.InlineKeyboardMarkup()
+                            kb.add(types.InlineKeyboardButton(text=otp, copy_text=types.CopyTextButton(text=otp)))
+                            if search_msg_id: bot.edit_message_text(text, chat_id, search_msg_id, parse_mode="Markdown", reply_markup=kb)
+                            else: bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+                            return
+            time.sleep(3)
     finally:
         otp_running[chat_id] = False
 
 def process_number(message, edit_msg=None):
     rid = message.text
-    if edit_msg:
-        bot.edit_message_text("⏳ 𝙿𝙻𝙴𝙰𝚂𝙴 𝚆𝙰𝙸𝚃...\n🔄 𝙽𝚄𝙼𝙱𝙴𝚁 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙽𝙶...", message.chat.id, edit_msg.message_id)
-        status_id = edit_msg.message_id
-    else:
-        status_id = bot.send_message(message.chat.id, "⏳ 𝙿𝙻𝙴𝙰𝚂𝙴 𝚆𝙰𝙸𝚃...\n🔄 𝙽𝚄𝙼𝙱𝙴𝚁 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙽𝙶...").message_id
-    
+    status_id = edit_msg.message_id if edit_msg else bot.send_message(message.chat.id, "⏳ 𝙿𝙻𝙴𝙰𝚂𝙴 𝚆𝙰𝙸𝚃...").message_id
     try:
-        response = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
+        response = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15, verify=False)
         data = response.json()
         if data.get("meta", {}).get("code") == 200:
             full_num = str(data.get("data", {}).get("full_number")).replace("+", "")
             country = data.get("data", {}).get("country", "Unknown")
-            user_numbers[message.chat.id] = full_num; user_countries[message.chat.id] = country; user_ranges[message.chat.id] = rid
+            user_numbers[message.chat.id] = full_num
+            user_countries[message.chat.id] = country
+            user_ranges[message.chat.id] = rid
             kb = types.InlineKeyboardMarkup(row_width=2)
             kb.add(types.InlineKeyboardButton(text=f"+{full_num}", copy_text=types.CopyTextButton(text=f"+{full_num}")))
             kb.row(types.InlineKeyboardButton("🔄 𝙲𝚑𝚊𝚗𝚐𝚎 𝙽𝚞𝚖𝚋𝚎𝚛", callback_data="change_num"), types.InlineKeyboardButton("🔍 𝙾𝚃𝙿 𝚂𝙴𝙰𝚁𝙲𝙷", callback_data="otp_search"))
-            kb.add(types.InlineKeyboardButton("🔐 𝙾𝚃𝙿 𝙶𝚁𝙾𝚄𝙿", url=GROUP_URL))
-            msg = ("✅ 𝙽𝚞𝚖𝚋𝚎𝚛 𝙰𝚜𝚜𝚒𝚐𝚗𝚎𝚍 !\n━━━━━━━━━━━━━━━━━━━━\n\n"
-                   f"🟢 𝙲𝚘𝚞𝚗𝚝𝚛𝚢 : {get_flag(country)} {country}\n\n📞 𝙽𝚞𝚖𝚋𝚎𝚛 : `{full_num}`\n\n"
-                   "🌺 𝚂𝚎𝚛𝚟𝚒𝚌𝚎 : 𝙵𝚊𝚌𝚎𝚋𝚘𝚘𝚔\n\n━━━━━━━━━━━━━━━━━━━━\n⏳ 𝚆𝙰𝙸𝚃𝙸𝙽𝙶 𝙵𝙾𝚁 𝙾𝚃𝙿...")
-            bot.edit_message_text(msg, message.chat.id, status_id, parse_mode="Markdown", reply_markup=kb)
+            bot.edit_message_text(f"✅ Number Assigned!\n📞 {full_num}", message.chat.id, status_id, reply_markup=kb)
         else: bot.edit_message_text("❌ নাম্বার পাওয়া যায়নি!", message.chat.id, status_id)
     except Exception as e: bot.edit_message_text(f"❌ ত্রুটি: {e}", message.chat.id, status_id)
 
-@safe_execute
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     if call.data == "verify_join":
         if is_joined(call.from_user.id): bot.answer_callback_query(call.id, "✅ You are verified!"); start(call.message)
         else: bot.answer_callback_query(call.id, "❌ Still not joined!")
-    elif call.data == "change_num":
-        rid = user_ranges.get(call.message.chat.id)
-        if not rid: return
-        fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
-        process_number(fake_msg, edit_msg=call.message)
     elif call.data == "otp_search":
-        if otp_running.get(call.message.chat.id): bot.answer_callback_query(call.id, "⏳ OTP Search Already Running!"); return
-        user_num = user_numbers.get(call.message.chat.id); country = user_countries.get(call.message.chat.id, "Unknown")
-        search_msg = bot.send_message(call.message.chat.id, "🔍 𝙾𝚃𝙿 𝚂𝙴𝙰𝚁𝙲𝙷𝙸𝙽𝙶...\n\n⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚆𝚊𝚒𝚝...")
-        threading.Thread(target=auto_check_otp, args=(call.message.chat.id, user_num, country, search_msg.message_id), daemon=True).start()
+        threading.Thread(target=auto_check_otp, args=(call.message.chat.id, user_numbers.get(call.message.chat.id), user_countries.get(call.message.chat.id), call.message.message_id), daemon=True).start()
     elif call.data.startswith("service_"):
-        country = call.data.replace("service_", "", 1); rid = service_buttons.get(country)
-        if not rid: return
-        user_ranges[call.message.chat.id] = rid
-        fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
+        country = call.data.replace("service_", "", 1)
+        fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": service_buttons.get(country)})()
         process_number(fake_msg)
 
-def run_bot():
-    keep_alive()
-    while True:
-        try:
-            print("Bot Started...")
-            bot.infinity_polling(timeout=60, long_polling_timeout=60, skip_pending=True, logger_level=logging.ERROR)
-        except Exception:
-            logging.error(traceback.format_exc())
-            print("Bot Restarting After Crash...")
-            time.sleep(5)
-
 if __name__ == "__main__":
-    run_bot()
+    keep_alive()
+    bot.remove_webhook()
+    print("Bot is Starting...")
+    bot.infinity_polling(timeout=30, long_polling_timeout=30, skip_pending=True)
