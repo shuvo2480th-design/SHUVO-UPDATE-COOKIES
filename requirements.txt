@@ -1,8 +1,0 @@
-pyTelegramBotAPI
-instaloader
-pyotp
-PySocks
-flask
-requests
-pycountry
-gunicorn
