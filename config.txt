@@ -1,0 +1,15 @@
+{
+  "type": "service_account",
+  "project_id": "my-otp-bot-e8ef9",
+  "private_key_id": "542801f9c21e94a91e17250b20a1641498144ce3",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDd9GCdsh1TtikP\nkrW4yJatDUgpjBROfDk2fz/aNu5OoZl9jEYrX3R4Fu9eUaF9pGK9NmYaH3ucc7Ov\nqC/dGkwACJ+emFHT/jk87eLsSus2MDy599zofB1KySoqaA2NPi9b2qFFLut6sPJr\n5Lx1j1fXGPL9jz51BZHJSfP+LMsXfo43XvY3h1ekU9GXCtrRRpwoUgDhroQfckrb\nVhIZ4bzgBUP90udms1Kvt3gcAHwOsNfUW7Q4ecgWYLGQzpAjOEGpdMa71IrNHlPA\nlczKSuQzIJday6BepsfEQs6UO5iBLEHUZWZaRzVbmEe/uy0vgQjmW0FISp5hTj91\nFy0Ij61fAgMBAAECggEAI/Xq93HQauvfFY0Cu0294ot92cQT1YQumC6gGktUa1H8\nYTPVJJmCcHiKz3XGBpTCg1R+e2oGvYTzeRjJ/yE6bLZOTO7x3GPamI1ppY4dM3o3\nmeEs80/fRmrMVZ2RNdqm5/4cAJkHAam3RUAvQT7NumW/l3xaCrIHJPKXQQ23LqF/\nFB+dU7w2Lky8RMd1Q9opNdBiCSk0efs5+spj/eB92aFHTc/Ymz8TFXKqbt898xr1\nZP1KXQaMMoZSaC9OpDpPTEYsClKurS4t63Gc+3fRwUw/7gZ7lVgJSfd83fo64A1G\nvoYYOJFh4wyv4htv+CqhUOMgeDEB9+ZJe1lxnsMuEQKBgQD3XsNUH/L0Umvs8fKl\n6PoouokVyywAML71LbGJSkOOQIulBMqXUOj3rAoP8wpfCK5vjCUa4CoqOVPQkg7l\nrASuGBsrx8vfDNhh24oGf3c+FZF1ENsiUkAOC5lpD1i150bEe44toRD7V8btr9Sl\nn38RBS04kwgU4FX56y0Xqa67kQKBgQDlsqFw1fPKsZY+h3yKtMIQbWOIbieRCBEm\ncnb5+7DRQWiFVHwUyAAanvxM6kvW5XKSx9M3+onspuhczEEDoVWO7sR6zJbUTHli\nZz/NCHIYka3R67mi53hxXke1V8Za3420EIs55Zx4/KOtgKAXZ/SHD+4EtMpSm8Di\n+7vTbQMB7wKBgQCzBXSs/BYy9TdAGnV11p68PQsap5fnZ1+7Rl9WsVUkrNejDE2l\nppuDKpF5q3VVA45iEfWEdrhtKGHc7uczFgOpDq8TRxvnB3/NijlgrHzahHdpVlKQ\nix/qSkCzBLU5p+/SIGzr3sXQcFz6BScK2dv2sF1itR3DJftyy90tY9Kd0QKBgHs8\n3fVGNWj44t1ln+JjnQNnTVGzmDLuGxV/sGnrKjD7YPK4I2Ka88NUrZUu18XSkShD\nYgXUvA9mdaDkTbV+6AKqBGzGO95nsXCkaMy+zUh1UMciLBVFD4/zv5GCKIA1FTgY\n8Dn+AXfARKkgK8SjF8UnPNL1lN/BhTnDSkDjagutAoGBAKXOMW1p9H9/UntPrWQ3\nHr3kO3hnSVvVnpDEAzVCBnjF5VaQOzclRvzLWfD/IwTaCbEIxDi6LzluyrknuFnM\nBgu7s68MmbprxMdTl2ouG/4kh4gpFbAr36iqrjZ8tBWI6JTtJAv9i4qwWCn0o71I\nlQHftzMjwZ+XlqMqBQnNL9Jp\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@my-otp-bot-e8ef9.iam.gserviceaccount.com",
+  "client_id": "108242311821650909902",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40my-otp-bot-e8ef9.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+with open("config.txt", "r") as f:
+    data = json.load(f) # অথবা নিজের মতো করে ডাটা পার্স করে নিন
