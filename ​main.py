@@ -5,7 +5,6 @@ import pickle
 import os
 import re
 import threading
-import random
 from telebot import types
 
 # ---------------- CONFIG ----------------
@@ -20,10 +19,8 @@ bot = telebot.TeleBot(BOT_TOKEN)
 DB_FILE = "otp_history.pkl"
 
 def get_country_info(number):
-    if number.startswith("224"): 
-        return "🇬🇳", "Guinea", "English"
-    elif number.startswith("880"):
-        return "🇧🇩", "Bangladesh", "Bengali"
+    if number.startswith("224"): return "🇬🇳", "Guinea", "English"
+    elif number.startswith("880"): return "🇧🇩", "Bangladesh", "Bengali"
     return "🇬🇳", "Guinea", "English"
 
 def detect_service(msg):
@@ -36,13 +33,9 @@ def detect_service(msg):
 def send_styled_otp(otp_item):
     otp_full = otp_item.get("message", "")
     full_number = str(otp_item.get("number", ""))
-    
     flag, country, lang = get_country_info(full_number)
-    
-    # সঠিক মাস্কিং (শুরুতে ৪টি, শেষে ৪টি ডিজিট)
     masked_number = f"{full_number[:4]}★★{full_number[-4:]}" if len(full_number) >= 8 else full_number
     
-    # ওটিপি কোড এক্সট্রাকশন (৫-৮ ডিজিট, N/A হবে না)
     clean_msg = otp_full.replace(" ", "")
     otp_match = re.search(r'\d{5,8}', clean_msg)
     otp_code = otp_match.group() if otp_match else "".join(filter(str.isdigit, otp_full))[:8]
@@ -50,7 +43,6 @@ def send_styled_otp(otp_item):
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
-    # ফরম্যাটিং
     text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
             f"☎️ {masked_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
@@ -64,20 +56,31 @@ def send_styled_otp(otp_item):
     msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot.delete_message(CHANNEL_ID, msg.message_id))).start()
 
-print("🚀 Bot is running perfectly with all fixes...")
+def run_bot():
+    print("🚀 Bot is running...")
+    while True:
+        try:
+            res = requests.get(API_URL, headers={"mauthapi": API_KEY}, timeout=10).json()
+            if res.get("meta", {}).get("code") == 200:
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                for otp_item in res.get("data", {}).get("otps", []):
+                    otp_id = str(otp_item.get("otp_id", ""))
+                    if otp_id not in history:
+                        send_styled_otp(otp_item)
+                        history[otp_id] = True
+                        pickle.dump(history, open(DB_FILE, "wb"))
+                        time.sleep(1.5)
+        except Exception as e:
+            print(f"Error: {e}")
+        time.sleep(10)
 
-while True:
-    try:
-        res = requests.get(API_URL, headers={"mauthapi": API_KEY}, timeout=10).json()
-        if res.get("meta", {}).get("code") == 200:
-            history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
-            for otp_item in res.get("data", {}).get("otps", []):
-                otp_id = str(otp_item.get("otp_id", ""))
-                if otp_id not in history:
-                    send_styled_otp(otp_item)
-                    history[otp_id] = True
-                    pickle.dump(history, open(DB_FILE, "wb"))
-                    time.sleep(1.5)
-    except Exception as e:
-        print(f"Error: {e}")
-    time.sleep(10)
+if __name__ == "__main__":
+    # রেন্ডারের জন্য পোর্ট খোলা রাখা জরুরি হতে পারে
+    from flask import Flask
+    app = Flask(__name__)
+    @app.route('/')
+    def home(): return "Bot is running!"
+    
+    # থ্রেডে বট চালানো
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=8080)
