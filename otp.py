@@ -1,12 +1,4 @@
-Import requests
-import time
-import telebot
-import pickle
-import os
-import re
-import threading
-import random
-import phonenumbers
+import requests, time, telebot, pickle, os, re, threading, random, phonenumbers
 from phonenumbers import geocoder
 from telebot import types
 from flask import Flask
@@ -23,22 +15,13 @@ bot1 = telebot.TeleBot(BOT_TOKEN_1)
 bot2 = telebot.TeleBot(BOT_TOKEN_2)
 DB_FILE = "otp_history.pkl"
 
-# অটো কান্ট্রি ডিটেকশন ফাংশন
 def get_country_info(number):
     try:
-        # নাম্বারটি "+" দিয়ে শুরু না হলে যোগ করে নেওয়া
         formatted_number = "+" + number if not number.startswith("+") else number
         parsed_number = phonenumbers.parse(formatted_number, None)
-        
-        # দেশের নাম
         country_name = geocoder.description_for_number(parsed_number, "en")
-        
-        # পতাকার কোড
         region_code = phonenumbers.region_code_for_number(parsed_number)
-        
-        # পতাকা ইমোজি জেনারেট করা
         flag = "".join([chr(127462 + ord(char) - ord('A')) for char in region_code.upper()])
-        
         return flag, country_name, "English"
     except:
         return "🌐", "Unknown", "English"
@@ -61,21 +44,18 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     flag, country, lang = get_country_info(actual_copy_number)
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
-
     text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
             f"☎️ {display_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
-
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
     markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=actual_copy_number)))
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
-    
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1 LOGIC ---
+# --- BOT 1: SUCCESS OTP ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
@@ -95,7 +75,7 @@ def run_bot1():
         except: pass
         time.sleep(10)
 
-# --- BOT 2 LOGIC ---
+# --- BOT 2: RANGE CONSOLE ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
@@ -107,10 +87,11 @@ def run_bot2():
                     time_id = str(hit.get("time", ""))
                     if time_id not in history:
                         raw = str(hit.get("range", ""))
-                        clean = re.sub(r'[Xx]', '', raw)
-                        generated = f"{clean}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
+                        clean_range = re.sub(r'\D', '', raw)
+                        generated = f"{clean_range}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
+                        masked = f"{generated[:4]}★★{generated[-4:]}"
                         code = extract_otp(hit.get("message", ""))
-                        send_to_telegram(bot2, hit.get("message", ""), generated, generated, code)
+                        send_to_telegram(bot2, hit.get("message", ""), masked, clean_range, code)
                         history[time_id] = True
                         pickle.dump(history, open(DB_FILE, "wb"))
         except: pass
