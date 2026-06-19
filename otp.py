@@ -1,4 +1,12 @@
-import requests, time, telebot, pickle, os, re, threading, random, phonenumbers
+import requests
+import time
+import telebot
+import pickle
+import os
+import re
+import threading
+import random
+import phonenumbers
 from phonenumbers import geocoder
 from telebot import types
 from flask import Flask
@@ -15,6 +23,7 @@ bot1 = telebot.TeleBot(BOT_TOKEN_1)
 bot2 = telebot.TeleBot(BOT_TOKEN_2)
 DB_FILE = "otp_history.pkl"
 
+# অটো কান্ট্রি ডিটেকশন ফাংশন
 def get_country_info(number):
     try:
         formatted_number = "+" + number if not number.startswith("+") else number
@@ -58,17 +67,14 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1: SUCCESS OTP (ডুপ্লিকেট চেকসহ) ---
+# --- BOT 1 LOGIC (Success OTP Duplicate Check) ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
         try:
             res = requests.get(url, headers={"mauthapi": API_KEY}, timeout=10).json()
             if res.get("meta", {}).get("code") == 200:
-                if os.path.exists(DB_FILE):
-                    with open(DB_FILE, "rb") as f: history = pickle.load(f)
-                else: history = {}
-                
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
                 for item in res.get("data", {}).get("otps", []):
                     oid = str(item.get("otp_id", ""))
                     if oid not in history:
@@ -77,32 +83,29 @@ def run_bot1():
                         code = extract_otp(item.get("message", ""))
                         send_to_telegram(bot1, item.get("message", ""), masked, num, code)
                         history[oid] = True
-                        with open(DB_FILE, "wb") as f: pickle.dump(history, f)
+                        pickle.dump(history, open(DB_FILE, "wb"))
         except: pass
         time.sleep(10)
 
-# --- BOT 2: RANGE CONSOLE (৪ ডিজিট কেটে নতুন রেন্জ জেনারেট) ---
+# --- BOT 2 LOGIC (Range Console with 4-digit randomization) ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
         try:
             res = requests.get(url, headers={"mauthapi": API_KEY}, timeout=10).json()
             if res.get("meta", {}).get("status") == "ok":
-                if os.path.exists(DB_FILE):
-                    with open(DB_FILE, "rb") as f: history = pickle.load(f)
-                else: history = {}
-                
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
                 for hit in res.get("data", {}).get("hits", []):
                     time_id = str(hit.get("time", ""))
                     if time_id not in history:
                         raw = str(hit.get("range", ""))
+                        # ৪ ডিজিট কেটে নতুন রেন্জ জেনারেট
                         clean = re.sub(r'[Xx]', '', raw)
-                        # রেন্জের থেকে ৪ ডিজিট বাদে বাকিটুকু নিয়ে ৪ ডিজিট যোগ করা
                         generated = f"{clean}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
                         code = extract_otp(hit.get("message", ""))
                         send_to_telegram(bot2, hit.get("message", ""), generated, generated, code)
                         history[time_id] = True
-                        with open(DB_FILE, "wb") as f: pickle.dump(history, f)
+                        pickle.dump(history, open(DB_FILE, "wb"))
         except: pass
         time.sleep(10)
 
