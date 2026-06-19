@@ -44,25 +44,31 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     flag, country, lang = get_country_info(actual_copy_number)
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
+
     text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
             f"☎️ {display_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
+
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
     markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=actual_copy_number)))
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
+    
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1: SUCCESS OTP ---
+# --- BOT 1: SUCCESS OTP (ডুপ্লিকেট চেকসহ) ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
         try:
             res = requests.get(url, headers={"mauthapi": API_KEY}, timeout=10).json()
             if res.get("meta", {}).get("code") == 200:
-                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                if os.path.exists(DB_FILE):
+                    with open(DB_FILE, "rb") as f: history = pickle.load(f)
+                else: history = {}
+                
                 for item in res.get("data", {}).get("otps", []):
                     oid = str(item.get("otp_id", ""))
                     if oid not in history:
@@ -71,29 +77,32 @@ def run_bot1():
                         code = extract_otp(item.get("message", ""))
                         send_to_telegram(bot1, item.get("message", ""), masked, num, code)
                         history[oid] = True
-                        pickle.dump(history, open(DB_FILE, "wb"))
+                        with open(DB_FILE, "wb") as f: pickle.dump(history, f)
         except: pass
         time.sleep(10)
 
-# --- BOT 2: RANGE CONSOLE ---
+# --- BOT 2: RANGE CONSOLE (৪ ডিজিট কেটে নতুন রেন্জ জেনারেট) ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
         try:
             res = requests.get(url, headers={"mauthapi": API_KEY}, timeout=10).json()
             if res.get("meta", {}).get("status") == "ok":
-                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                if os.path.exists(DB_FILE):
+                    with open(DB_FILE, "rb") as f: history = pickle.load(f)
+                else: history = {}
+                
                 for hit in res.get("data", {}).get("hits", []):
                     time_id = str(hit.get("time", ""))
                     if time_id not in history:
                         raw = str(hit.get("range", ""))
-                        clean_range = re.sub(r'\D', '', raw)
-                        generated = f"{clean_range}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
-                        masked = f"{generated[:4]}★★{generated[-4:]}"
+                        clean = re.sub(r'[Xx]', '', raw)
+                        # রেন্জের থেকে ৪ ডিজিট বাদে বাকিটুকু নিয়ে ৪ ডিজিট যোগ করা
+                        generated = f"{clean}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
                         code = extract_otp(hit.get("message", ""))
-                        send_to_telegram(bot2, hit.get("message", ""), masked, clean_range, code)
+                        send_to_telegram(bot2, hit.get("message", ""), generated, generated, code)
                         history[time_id] = True
-                        pickle.dump(history, open(DB_FILE, "wb"))
+                        with open(DB_FILE, "wb") as f: pickle.dump(history, f)
         except: pass
         time.sleep(10)
 
