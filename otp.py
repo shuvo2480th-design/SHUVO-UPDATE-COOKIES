@@ -33,9 +33,10 @@ def get_country_info(number):
         "260": "Zambia 🇿🇲", "263": "Zimbabwe 🇿🇼"
     }
     clean_num = re.sub(r'\D', '', number)
-    sorted_codes = sorted(countries_map.keys(), key=len, reverse=True)
-    for code in sorted_codes:
-        if clean_num.startswith(code): return countries_map[code], "English"
+    # লজিক আপডেট: বড় থেকে ছোট চেক করবে
+    for i in range(4, 0, -1):
+        if clean_num[:i] in countries_map:
+            return countries_map[clean_num[:i]], "English"
     return "Unknown 🌐", "English"
 
 def detect_service(msg):
