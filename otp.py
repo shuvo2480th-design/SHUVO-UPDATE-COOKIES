@@ -1,4 +1,4 @@
-import requests
+Import requests
 import time
 import telebot
 import pickle
@@ -26,11 +26,19 @@ DB_FILE = "otp_history.pkl"
 # অটো কান্ট্রি ডিটেকশন ফাংশন
 def get_country_info(number):
     try:
+        # নাম্বারটি "+" দিয়ে শুরু না হলে যোগ করে নেওয়া
         formatted_number = "+" + number if not number.startswith("+") else number
         parsed_number = phonenumbers.parse(formatted_number, None)
+        
+        # দেশের নাম
         country_name = geocoder.description_for_number(parsed_number, "en")
+        
+        # পতাকার কোড
         region_code = phonenumbers.region_code_for_number(parsed_number)
+        
+        # পতাকা ইমোজি জেনারেট করা
         flag = "".join([chr(127462 + ord(char) - ord('A')) for char in region_code.upper()])
+        
         return flag, country_name, "English"
     except:
         return "🌐", "Unknown", "English"
@@ -67,7 +75,7 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1 LOGIC (Success OTP Duplicate Check) ---
+# --- BOT 1 LOGIC ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
@@ -87,7 +95,7 @@ def run_bot1():
         except: pass
         time.sleep(10)
 
-# --- BOT 2 LOGIC (Range Console with 4-digit randomization) ---
+# --- BOT 2 LOGIC ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
@@ -99,7 +107,6 @@ def run_bot2():
                     time_id = str(hit.get("time", ""))
                     if time_id not in history:
                         raw = str(hit.get("range", ""))
-                        # ৪ ডিজিট কেটে নতুন রেন্জ জেনারেট
                         clean = re.sub(r'[Xx]', '', raw)
                         generated = f"{clean}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
                         code = extract_otp(hit.get("message", ""))
