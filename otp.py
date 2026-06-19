@@ -1,11 +1,4 @@
-import requests
-import time
-import telebot
-import pickle
-import os
-import re
-import threading
-import random
+import requests, time, telebot, pickle, os, re, threading, random
 from telebot import types
 from flask import Flask
 
@@ -22,7 +15,6 @@ bot2 = telebot.TeleBot(BOT_TOKEN_2)
 DB_FILE = "otp_history.pkl"
 
 def get_country_info(number):
-    # সব দেশের কোড এবং তথ্য
     countries_map = {
         "93": "Afghanistan 🇦🇫", "355": "Albania 🇦🇱", "213": "Algeria 🇩🇿", "376": "Andorra 🇦🇩", "244": "Angola 🇦🇴", "1268": "Antigua and Barbuda 🇦🇬", "54": "Argentina 🇦🇷", "374": "Armenia 🇦🇲", "61": "Australia 🇦🇺", "43": "Austria 🇦🇹", "994": "Azerbaijan 🇦🇿",
         "1242": "Bahamas 🇧🇸", "973": "Bahrain 🇧🇭", "880": "Bangladesh 🇧🇩", "1246": "Barbados 🇧🇧", "375": "Belarus 🇧🇾", "32": "Belgium 🇧🇪", "501": "Belize 🇧🇿", "229": "Benin 🇧🇯", "975": "Bhutan 🇧🇹", "591": "Bolivia 🇧🇴", "387": "Bosnia and Herzegovina 🇧🇦", "267": "Botswana 🇧🇼", "55": "Brazil 🇧🇷", "673": "Brunei 🇧🇳", "359": "Bulgaria 🇧🇬", "226": "Burkina Faso 🇧🇫", "257": "Burundi 🇧🇮",
@@ -40,11 +32,10 @@ def get_country_info(number):
         "678": "Vanuatu 🇻🇺", "379": "Vatican City 🇻🇦", "58": "Venezuela 🇻🇪", "84": "Vietnam 🇻🇳", "967": "Yemen 🇾🇪",
         "260": "Zambia 🇿🇲", "263": "Zimbabwe 🇿🇼"
     }
-
-    # নাম্বার থেকে কোড মিলিয়ে দেখা
-    for code, country in countries_map.items():
-        if number.startswith(code):
-            return country, "English"
+    clean_num = re.sub(r'\D', '', number)
+    sorted_codes = sorted(countries_map.keys(), key=len, reverse=True)
+    for code in sorted_codes:
+        if clean_num.startswith(code): return countries_map[code], "English"
     return "Unknown 🌐", "English"
 
 def detect_service(msg):
@@ -65,21 +56,17 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     country_info, lang = get_country_info(actual_copy_number)
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
-
     text = (f"<blockquote>{country_info} • 📱 {service} •</blockquote>\n"
             f"☎️ {display_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
-
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
     markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=actual_copy_number)))
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
-    
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1 LOGIC ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
@@ -99,7 +86,6 @@ def run_bot1():
         except: pass
         time.sleep(10)
 
-# --- BOT 2 LOGIC ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
