@@ -11,17 +11,10 @@ import os
 import random
 import logging
 import traceback
-import firebase_admin
-from firebase_admin import credentials, db
 from flask import Flask 
 from threading import Thread 
 from telebot import types 
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-
-# --- FIREBASE SETUP ---
-cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred, {'databaseURL': 'https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/'})
-db_ref = db.reference('users_data')
 
 # --- RENDER KEEP-ALIVE SERVER ---
 app = Flask('')
@@ -48,6 +41,7 @@ user_ranges = {}
 user_numbers = {} 
 user_countries = {} 
 service_buttons = {}  
+users = {} 
 withdraw_data = {} 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"] 
 otp_running = {}   
@@ -86,7 +80,10 @@ def join_markup():
 @safe_execute 
 @bot.message_handler(commands=['start']) 
 def start(message): 
-    db_ref.child(str(message.from_user.id)).child("active").set(True)
+    # নতুন ইউজার ট্র্যাক করার জন্য
+    if str(message.from_user.id) not in users:
+        users[str(message.from_user.id)] = {"balance": 0}
+        
     if not is_joined(message.from_user.id): 
         bot.send_message(message.chat.id, "⚠️ বট ব্যবহার করার আগে নিচের দুইটি চ্যানেলে Join করুন এবং তারপর VERIFIED বাটনে চাপুন।", reply_markup=join_markup()) 
         return 
@@ -103,23 +100,26 @@ def start(message):
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- নতুন অ্যাডমিন কমান্ড ---
+# --- নতুন এডমিন কমান্ড ---
 @bot.message_handler(commands=['user'])
 def count_users(message):
     if str(message.from_user.id) == ADMIN_ID:
-        users_count = len(db_ref.get() or {})
-        bot.reply_to(message, f"👥 মোট ইউজার সংখ্যা: {users_count}")
+        bot.reply_to(message, f"👥 মোট ইউজার সংখ্যা: {len(users)}")
 
 @bot.message_handler(commands=['send'])
 def broadcast(message):
     if str(message.from_user.id) == ADMIN_ID:
-        text = message.text.replace("/send", "").strip()
-        if not text: return
-        all_users = db_ref.get() or {}
-        for uid in all_users:
-            try: bot.send_message(uid, text)
+        text = message.text.replace("/send", "", 1).strip()
+        if not text:
+            bot.reply_to(message, "⚠️ কিছু লিখুন। যেমন: /send হ্যালো!")
+            return
+        count = 0
+        for uid in users:
+            try:
+                bot.send_message(uid, text)
+                count += 1
             except: pass
-        bot.reply_to(message, "✅ সবাইকে মেসেজ পাঠানো হয়েছে।")
+        bot.reply_to(message, f"✅ {count} জন ইউজারকে মেসেজ পাঠানো হয়েছে।")
 
 @bot.message_handler(commands=['add']) 
 def add_service(message): 
@@ -153,12 +153,9 @@ def auto_check_otp(chat_id, phone_number, country, search_msg_id=None):
                 for item in data.get("data", {}).get("otps", []): 
                     if clean_number(item.get("number")) in clean_number(phone_number): 
                         otp = "".join(filter(str.isdigit, item.get("message", "")))[-6:] 
-                        
-                        # Firebase Update
-                        ref = db_ref.child(str(chat_id))
-                        curr = ref.get() or {"balance": 0}
-                        new_bal = curr.get("balance", 0) + 0.15
-                        ref.update({"balance": new_bal})
+                        user_id = str(chat_id)
+                        if user_id not in users: users[user_id] = {"balance": 0}
+                        users[user_id]["balance"] += 0.15
                         
                         text = (
                             "╔════════════════════╗\n"
@@ -166,8 +163,10 @@ def auto_check_otp(chat_id, phone_number, country, search_msg_id=None):
                             "╚════════════════════╝\n"
                             f"💰 𝙱𝚊𝚕𝚊𝚗𝚌𝚎 𝙰𝚍𝚍𝚎𝚍 : 0.15 𝚃𝙺"
                         )
+                        
                         kb = types.InlineKeyboardMarkup() 
                         kb.add(types.InlineKeyboardButton(text=f"OTP: {otp}", copy_text=types.CopyTextButton(text=otp))) 
+                        
                         if search_msg_id: bot.edit_message_text(text, chat_id, search_msg_id, parse_mode="Markdown", reply_markup=kb) 
                         else: bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb) 
                         return 
@@ -202,6 +201,9 @@ def process_number(message, edit_msg=None):
 @safe_execute 
 @bot.message_handler(func=lambda message: True) 
 def handle_text(message): 
+    # নতুন ইউজার ট্র্যাক
+    if str(message.from_user.id) not in users: users[str(message.from_user.id)] = {"balance": 0}
+        
     if not is_joined(message.from_user.id): 
         bot.send_message(message.chat.id, "⚠️ দয়া করে চ্যানেলে জয়েন করুন।", reply_markup=join_markup()) 
         return 
@@ -218,10 +220,10 @@ def handle_text(message):
         bot.register_next_step_handler(msg, process_2fa) 
     elif message.text == "👤 𝙿𝚁𝙾𝙵𝙸𝙻𝙴": 
         user_id = str(message.from_user.id)
-        bal = (db_ref.child(user_id).get() or {}).get("balance", 0)
+        balance = users.get(user_id, {}).get("balance", 0)
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🏦 𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆", callback_data="withdraw"))
-        bot.send_message(message.chat.id, f"👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n\n🆔 𝙸𝙳 : {user_id}\n💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {bal:.2f} 𝚃𝙺", reply_markup=markup)
+        bot.send_message(message.chat.id, f"👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n\n🆔 𝙸𝙳 : {user_id}\n💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} 𝚃𝙺", reply_markup=markup)
     elif message.text == "👑 𝙰𝙳𝙼𝙸𝙽 𝚂𝚄𝙿𝙿𝙾𝚁𝚃": 
         kb = types.InlineKeyboardMarkup() 
         kb.add(types.InlineKeyboardButton("📩 এডমিনকে মেসেজ দিন", url=f"tg://user?id={ADMIN_ID}")) 
@@ -256,8 +258,8 @@ def handle_query(call):
         fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})() 
         process_number(fake_msg)
     elif call.data == "withdraw":
-        bal = (db_ref.child(str(call.from_user.id)).get() or {}).get("balance", 0)
-        if bal < 20: bot.answer_callback_query(call.id, "❌ Min 20 TK!"); return
+        balance = users.get(str(call.from_user.id), {}).get("balance", 0)
+        if balance < 20: bot.answer_callback_query(call.id, "❌ Min 20 TK!"); return
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(types.InlineKeyboardButton("💳 𝙱𝙺𝙰𝚂𝙷", callback_data="bkash"), types.InlineKeyboardButton("💳 𝚁𝙾𝙲𝙺𝙴𝚃", callback_data="rocket"))
         bot.edit_message_text("🏦 𝚂𝙴𝙻𝙴𝙲𝚃 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙼𝙴𝚃𝙷𝙾𝙳", call.message.chat.id, call.message.message_id, reply_markup=markup)
@@ -285,9 +287,7 @@ def get_amount(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("approve_"))
 def approve_payment(call):
     uid = call.data.split("_")[1]
-    ref = db_ref.child(uid)
-    curr = ref.get() or {"balance": 0}
-    ref.update({"balance": curr.get("balance", 0) - withdraw_data[int(uid)]["amount"]})
+    users[uid]["balance"] -= withdraw_data[int(uid)]["amount"]
     bot.send_message(uid, "✅ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚂𝚄𝙲𝙲𝙴𝚂𝚂!")
     bot.edit_message_text("✅ Done", call.message.chat.id, call.message.message_id)
 
