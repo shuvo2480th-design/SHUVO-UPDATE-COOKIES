@@ -5,6 +5,7 @@ import pickle
 import os
 import re
 import threading
+import random
 from telebot import types
 from flask import Flask
 
@@ -32,29 +33,36 @@ def detect_service(msg):
     if any(k in msg for k in ["WHATSAPP", "WA"]): return "WhatsApp"
     return "OTP"
 
-def send_to_telegram(bot_instance, otp_full, full_number, otp_code):
-    flag, country, lang = get_country_info(full_number)
-    masked_number = f"{full_number[:4]}★★{full_number[-4:]}" if len(full_number) >= 8 else full_number
+# ওটিপি পাওয়ার নিখুঁত লজিক (৫-৮ ডিজিট)
+def extract_otp(message_text):
+    # সব স্পেস রিমুভ করে ৫ থেকে ৮ ডিজিটের সংখ্যা খুঁজবে
+    clean = message_text.replace(" ", "")
+    match = re.search(r'\d{5,8}', clean)
+    if match:
+        return match.group()
+    # যদি না পায়, তবে সব সংখ্যা নিয়ে প্রথম ৫-৮ ডিজিট দিবে
+    digits = "".join(filter(str.isdigit, message_text))
+    return digits[:8] if len(digits) >= 5 else "00000"
+
+def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number, otp_code):
+    flag, country, lang = get_country_info(actual_copy_number)
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
     text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
-            f"☎️ {masked_number}\n\n"
+            f"☎️ {display_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
-    markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=full_number)))
+    markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=actual_copy_number)))
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
     
-    # মেসেজ পাঠানো
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
-    
-    # ৯০ সেকেন্ড পর মেসেজ অটো ডিলিট করার থ্রেড
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1 LOGIC ---
+# --- BOT 1 LOGIC (Success-OTP) ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
@@ -65,15 +73,16 @@ def run_bot1():
                 for item in res.get("data", {}).get("otps", []):
                     oid = str(item.get("otp_id", ""))
                     if oid not in history:
-                        code = re.search(r'\d{5,8}', item.get("message", "").replace(" ", ""))
-                        code = code.group() if code else "".join(filter(str.isdigit, item.get("message", "")))[:8]
-                        send_to_telegram(bot1, item.get("message", ""), item.get("number", ""), code)
+                        num = str(item.get("number", ""))
+                        masked = f"{num[:4]}★★{num[-4:]}" if len(num) >= 8 else num
+                        code = extract_otp(item.get("message", ""))
+                        send_to_telegram(bot1, item.get("message", ""), masked, num, code)
                         history[oid] = True
                         pickle.dump(history, open(DB_FILE, "wb"))
         except: pass
         time.sleep(10)
 
-# --- BOT 2 LOGIC ---
+# --- BOT 2 LOGIC (Console) ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
@@ -84,19 +93,20 @@ def run_bot2():
                 for hit in res.get("data", {}).get("hits", []):
                     time_id = str(hit.get("time", ""))
                     if time_id not in history:
-                        code = re.search(r'\d{5,8}', hit.get("message", "").replace(" ", ""))
-                        code = code.group() if code else "".join(filter(str.isdigit, hit.get("message", "")))[:8]
-                        send_to_telegram(bot2, hit.get("message", ""), str(hit.get("range", "")), code)
+                        raw = str(hit.get("range", ""))
+                        # X মুছে ৪টি ডিজিট জেনারেট করা
+                        clean = re.sub(r'[Xx]', '', raw)
+                        generated = f"{clean}{''.join([str(random.randint(0,9)) for _ in range(4)])}"
+                        code = extract_otp(hit.get("message", ""))
+                        send_to_telegram(bot2, hit.get("message", ""), generated, generated, code)
                         history[time_id] = True
                         pickle.dump(history, open(DB_FILE, "wb"))
         except: pass
         time.sleep(10)
 
-# --- START ---
 if __name__ == "__main__":
     threading.Thread(target=run_bot1, daemon=True).start()
     threading.Thread(target=run_bot2, daemon=True).start()
-    
     app = Flask(__name__)
     @app.route('/')
     def home(): return "All bots are running!"
