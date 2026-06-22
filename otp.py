@@ -1,3 +1,4 @@
+
 import requests
 import time
 import telebot
@@ -6,6 +7,8 @@ import os
 import re
 import random
 import threading
+import phonenumbers
+from phonenumbers import geocoder
 from telebot import types
 
 # ---------------- CONFIG ----------------
@@ -19,26 +22,23 @@ PANEL_BOT_URL = "https://t.me/shuvo_number_bot"
 bot = telebot.TeleBot(BOT_TOKEN)
 DB_FILE = "otp_history.pkl"
 
-# কান্ট্রি লিস্ট আপডেট করার সহজ উপায়
-COUNTRY_DATA = {
-    "224": ("🇬🇳", "Guinea", "English"),
-    "880": ("🇧🇩", "Bangladesh", "Bengali"),
-    "1": ("🇺🇸", "USA", "English"),
-    "91": ("🇮🇳", "India", "Hindi"),
-    "44": ("🇬🇧", "UK", "English"),
-    "62": ("🇮🇩", "Indonesia", "Indonesian")
-}
-
 def get_country_info(number):
-    # নাম্বার থেকে শুধুমাত্র সংখ্যাগুলো আলাদা করা
-    clean_number = re.sub(r'\D', '', str(number))
-    
-    # কান্ট্রি কোড চেক করা
-    for code, info in COUNTRY_DATA.items():
-        if clean_number.startswith(code):
-            return info
-            
-    return "🌐", "International", "English" # ডিফল্ট
+    try:
+        clean_number = re.sub(r'\D', '', str(number))
+        parsed_number = phonenumbers.parse("+" + clean_number, None)
+        country_name = geocoder.country_name_for_number(parsed_number, "en")
+        
+        # পতাকার ম্যাপিং (এখানে আপনি আপনার পছন্দমতো আরও যোগ করতে পারেন)
+        flags = {
+            "Bangladesh": "🇧🇩", "Guinea": "🇬🇳", "United States": "🇺🇸", 
+            "India": "🇮🇳", "United Kingdom": "🇬🇧", "Indonesia": "🇮🇩",
+            "Nigeria": "🇳🇬", "Russia": "🇷🇺", "China": "🇨🇳", "Pakistan": "🇵🇰"
+        }
+        
+        flag = flags.get(country_name, "🌐")
+        return flag, country_name if country_name else "Unknown", "English"
+    except:
+        return "🌐", "Unknown", "English"
 
 def detect_service(msg):
     msg = msg.upper()
