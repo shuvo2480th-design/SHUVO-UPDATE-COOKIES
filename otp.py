@@ -4,8 +4,8 @@ from telebot import types
 from flask import Flask
 
 # --- CONFIG ---
-BOT_TOKEN_1 = "8658807204:AAHuvlFfHgb19m1wKHkJbeyYcf-50SuaMi8"
-BOT_TOKEN_2 = "8764978166:AAEhHy4R82VK9FmygIyPAQaNxtYVfbx-eXY"
+BOT_TOKEN_1 = "8658807204:AAH6FSK5X0_haGRCQ_d-Vq4Gh1wLD0EsRgs"
+BOT_TOKEN_2 = "8764978166:AAF7gI33C0VapjDUSVaVYRCOJonhruu72OU"
 CHANNEL_ID = "-1002670575248"
 API_KEY = "MUBTR1MKUBO"
 PANEL_BOT_URL = "https://t.me/shuvo_number_bot"
@@ -55,7 +55,6 @@ def send_to_telegram(bot_instance, otp_full, display_number, actual_copy_number,
     msg = bot_instance.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot_instance.delete_message(CHANNEL_ID, msg.message_id)), daemon=True).start()
 
-# --- BOT 1: SUCCESS OTP ---
 def run_bot1():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
     while True:
@@ -75,7 +74,6 @@ def run_bot1():
         except: pass
         time.sleep(10)
 
-# --- BOT 2: RANGE CONSOLE ---
 def run_bot2():
     url = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
     while True:
@@ -99,6 +97,7 @@ def run_bot2():
 
 if __name__ == "__main__":
     threading.Thread(target=run_bot1, daemon=True).start()
+    time.sleep(2)
     threading.Thread(target=run_bot2, daemon=True).start()
     app = Flask(__name__)
     @app.route('/')
