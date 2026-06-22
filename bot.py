@@ -27,12 +27,15 @@ def keep_alive():
 
 # --- কনফিগারেশন ---
 API_KEY = "MUBTR1MKUBO" 
-BOT_TOKEN = "8510677584:AAG2bUo7vmYXF27jsXpdo1EDqTosH2yDpXM" 
+BOT_TOKEN = "8510677584:AAHjTslHP_YokhEYxoqiYDW7i59cZbE3PkA" 
 BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api" 
 HEADERS = {"mauthapi": API_KEY} 
 ADMIN_ID = "6136815573" 
 GROUP_URL = "https://t.me/tem_withh"
 FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/" 
+
+session = requests.Session() 
+session.headers.update(HEADERS)
 
 # --- FIREBASE LOGIC ---
 def get_firebase_balance(uid):
@@ -51,16 +54,22 @@ def update_firebase_balance(uid, amount):
         return new_bal
     except: return 0.0
 
+# Firebase সার্ভিস লোড ও সেভ
+def load_services_from_firebase():
+    res = session.get(f"{FIREBASE_URL}/services.json")
+    return res.json() if res.status_code == 200 and res.json() is not None else {}
+
+def save_service_to_firebase(country, rid):
+    session.put(f"{FIREBASE_URL}/services/{country}.json", data=json.dumps(rid))
+
 # ===================== STABLE SESSION =====================
-session = requests.Session() 
-session.headers.update(HEADERS)
 logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s")
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 
 user_ranges = {} 
 user_numbers = {} 
 user_countries = {} 
-service_buttons = {}  
+service_buttons = load_services_from_firebase()  # Firebase থেকে লোড হবে
 users = {} 
 withdraw_data = {} 
 received_otps = {} 
@@ -146,8 +155,10 @@ def add_service(message):
     text = message.text.replace("/add", "", 1).strip() 
     if ":" not in text: return 
     country, rid = text.split(":", 1) 
-    service_buttons[country.strip()] = rid.strip() 
-    bot.reply_to(message, f"✅ Added Successfully\n🌍 Country : {country.strip()}\n🔢 Range : {rid.strip()}")
+    country, rid = country.strip(), rid.strip()
+    service_buttons[country] = rid
+    save_service_to_firebase(country, rid)
+    bot.reply_to(message, f"✅ Added Successfully\n🌍 Country : {country}\n🔢 Range : {rid}")
 
 @bot.message_handler(commands=['del']) 
 def del_service(message): 
@@ -156,6 +167,7 @@ def del_service(message):
     for country in list(service_buttons.keys()): 
         if key in country.lower(): 
             del service_buttons[country] 
+            session.delete(f"{FIREBASE_URL}/services/{country}.json")
             bot.reply_to(message, f"✅ {country} Deleted Successfully.") 
             break
 
