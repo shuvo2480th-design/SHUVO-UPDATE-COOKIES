@@ -1,4 +1,3 @@
-
 import requests
 import time
 import telebot
@@ -28,11 +27,12 @@ def get_country_info(number):
         parsed_number = phonenumbers.parse("+" + clean_number, None)
         country_name = geocoder.country_name_for_number(parsed_number, "en")
         
-        # পতাকার ম্যাপিং (এখানে আপনি আপনার পছন্দমতো আরও যোগ করতে পারেন)
+        # আপনার পরিচিত দেশগুলোর পতাকার ম্যাপ
         flags = {
             "Bangladesh": "🇧🇩", "Guinea": "🇬🇳", "United States": "🇺🇸", 
-            "India": "🇮🇳", "United Kingdom": "🇬🇧", "Indonesia": "🇮🇩",
-            "Nigeria": "🇳🇬", "Russia": "🇷🇺", "China": "🇨🇳", "Pakistan": "🇵🇰"
+            "India": "🇮🇳", "United Kingdom": "🇬🇧", "Pakistan": "🇵🇰",
+            "Nigeria": "🇳🇬", "Indonesia": "🇮🇩", "Saudi Arabia": "🇸🇦",
+            "Russia": "🇷🇺", "China": "🇨🇳", "Germany": "🇩🇪", "Brazil": "🇧🇷"
         }
         
         flag = flags.get(country_name, "🌐")
@@ -63,9 +63,14 @@ def send_styled_otp(hit):
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
-    text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
-            f"☎️ {masked_number}\n\n"
-            f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
+    # আপনার চাওয়া ফরম্যাট
+    text = (f"┏━━━━━━━━━━━━━━━━━━┓\n"
+            f"┃ ✦ {masked_number} ✦   ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ {flag} {country} • {service} ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ ⏰ {current_time} • {lang} ┃\n"
+            f"┗━━━━━━━━━━━━━━━━━━┛")
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
@@ -73,7 +78,7 @@ def send_styled_otp(hit):
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
 
-    msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
+    msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup)
     threading.Thread(target=lambda: (time.sleep(90), bot.delete_message(CHANNEL_ID, msg.message_id))).start()
 
 print("🚀 Bot is running perfectly...")
