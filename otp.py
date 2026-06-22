@@ -19,11 +19,26 @@ PANEL_BOT_URL = "https://t.me/shuvo_number_bot"
 bot = telebot.TeleBot(BOT_TOKEN)
 DB_FILE = "otp_history.pkl"
 
+# কান্ট্রি লিস্ট আপডেট করার সহজ উপায়
+COUNTRY_DATA = {
+    "224": ("🇬🇳", "Guinea", "English"),
+    "880": ("🇧🇩", "Bangladesh", "Bengali"),
+    "1": ("🇺🇸", "USA", "English"),
+    "91": ("🇮🇳", "India", "Hindi"),
+    "44": ("🇬🇧", "UK", "English"),
+    "62": ("🇮🇩", "Indonesia", "Indonesian")
+}
+
 def get_country_info(number):
-    # এখানে লজিক দেওয়া আছে, চাইলে আরও কান্ট্রি যোগ করতে পারেন
-    if number.startswith("224"): 
-        return "🇬🇳", "Guinea", "English"
-    return "🇬🇳", "Guinea", "English" # ডিফল্ট
+    # নাম্বার থেকে শুধুমাত্র সংখ্যাগুলো আলাদা করা
+    clean_number = re.sub(r'\D', '', str(number))
+    
+    # কান্ট্রি কোড চেক করা
+    for code, info in COUNTRY_DATA.items():
+        if clean_number.startswith(code):
+            return info
+            
+    return "🌐", "International", "English" # ডিফল্ট
 
 def detect_service(msg):
     msg = msg.upper()
@@ -36,7 +51,6 @@ def send_styled_otp(hit):
     otp_full = hit.get("message", "")
     full_number = str(hit.get("range", ""))
     
-    # অটোমেটিক সিলেক্ট
     flag, country, lang = get_country_info(full_number)
     
     range_clean = re.sub(r'[Xx]', '', full_number)
@@ -49,7 +63,6 @@ def send_styled_otp(hit):
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
-    # কোট ফরম্যাটে সাজানো
     text = (f"<blockquote>{flag} {country} • 📱 {service} •</blockquote>\n"
             f"☎️ {masked_number}\n\n"
             f"<blockquote>⏰ {current_time} 🗣 {lang}</blockquote>")
@@ -63,7 +76,6 @@ def send_styled_otp(hit):
     msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot.delete_message(CHANNEL_ID, msg.message_id))).start()
 
-# মেইন লুপ
 print("🚀 Bot is running perfectly...")
 while True:
     try:
