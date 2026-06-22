@@ -11,7 +11,7 @@ from phonenumbers import geocoder
 from telebot import types
 
 # ---------------- CONFIG ----------------
-BOT_TOKEN = "YOUR_NEW_TOKEN_HERE"  # নতুন টোকেনটি এখানে বসান
+BOT_TOKEN = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
 CHANNEL_ID = "-1002670575248"
 API_KEY = "MUBTR1MKUBO"
 API_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
@@ -19,8 +19,7 @@ RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL = "https://t.me/shuvo_number_bot"
 
 bot = telebot.TeleBot(BOT_TOKEN)
-# সার্ভারে কনফ্লিক্ট এড়াতে এটি সবচেয়ে জরুরি
-bot.remove_webhook() 
+bot.remove_webhook() # সার্ভারে কনফ্লিক্ট এড়াতে
 
 DB_FILE = "otp_history.pkl"
 
@@ -82,7 +81,7 @@ def send_styled_otp(hit):
     markup.row(types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL), 
                types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL))
 
-    msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup)
+    msg = bot.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
     threading.Thread(target=lambda: (time.sleep(90), bot.delete_message(CHANNEL_ID, msg.message_id))).start()
 
 print("🚀 Bot is running perfectly...")
