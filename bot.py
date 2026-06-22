@@ -111,7 +111,12 @@ def join_markup():
 @safe_execute 
 @bot.message_handler(commands=['start']) 
 def start(message): 
-    if str(message.from_user.id) not in users: users[str(message.from_user.id)] = {"balance": 0}
+    user_id = str(message.from_user.id)
+    # ফায়ারবেসে ইউজার রেজিস্টার ও ব্যালেন্স চেক
+    if user_id not in users:
+        current_bal = get_firebase_balance(user_id)
+        session.put(f"{FIREBASE_URL}/users/{user_id}/balance.json", data=json.dumps(current_bal))
+        users[user_id] = {"balance": current_bal}
         
     if not is_joined(message.from_user.id): 
         bot.send_message(message.chat.id, "⚠️ বট ব্যবহার করার আগে নিচের দুইটি চ্যানেলে Join করুন এবং তারপর VERIFIED বাটনে চাপুন।", reply_markup=join_markup()) 
@@ -311,7 +316,7 @@ def handle_query(call):
                 "      ✦ 𝙾𝚃𝙿 𝚁𝙲𝚅 ✦\n"
                 "╚════════════════════╝\n\n"
                 "➤ OTP ➤ 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚁𝚎𝚌𝚟𝚎𝚒𝚟𝚎𝚍 ✅\n\n"
-                "💎 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚟𝚎\n"
+                "💎 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚅𝚎\n"
                 "🏦 𝚂𝚎𝚛𝚟𝚒𝚌𝚎: 𝙾𝚃𝙿 𝚄𝚗𝚕𝚘𝚌𝚔𝚎𝚍"
             )
             bot.send_message(call.message.chat.id, msg)
