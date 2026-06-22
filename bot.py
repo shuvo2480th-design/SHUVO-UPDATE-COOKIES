@@ -299,7 +299,7 @@ def handle_query(call):
                 "      ✦ 𝙾𝚃𝙿 𝚁𝙲𝚅 ✦\n"
                 "╚════════════════════╝\n\n"
                 "➤ OTP ➤ 𝙰𝚕𝚛𝚎𝚊𝚍𝚢 𝚁𝚎𝚌𝚟𝚎𝚒𝚟𝚎𝚍 ✅\n\n"
-                "💎 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚅𝚎\n"
+                "💎 𝚂𝚝𝚊𝚝𝚞𝚜: 𝙰𝚌𝚝𝚒𝚟𝚎\n"
                 "🏦 𝚂𝚎𝚛𝚟𝚒𝚌𝚎: 𝙾𝚃𝙿 𝚄𝚗𝚕𝚘𝚌𝚔𝚎𝚍"
             )
             bot.send_message(call.message.chat.id, msg)
@@ -350,9 +350,9 @@ def run_bot():
     keep_alive() 
     while True: 
         try: 
-            bot.infinity_polling(timeout=60, long_polling_timeout=60, skip_pending=True, logger_level=logging.ERROR) 
+            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
         except Exception: 
-            time.sleep(5)
+            time.sleep(2) 
 
 if __name__ == "__main__": 
     run_bot()
