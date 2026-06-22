@@ -157,7 +157,7 @@ def add_service(message):
     country, rid = text.split(":", 1) 
     country, rid = country.strip(), rid.strip()
     service_buttons[country] = rid
-    save_service_to_firebase(country, rid)
+    save_service_to_firebase(country, rid) # Firebase-এ সেভ
     bot.reply_to(message, f"✅ Added Successfully\n🌍 Country : {country}\n🔢 Range : {rid}")
 
 @bot.message_handler(commands=['del']) 
@@ -167,7 +167,7 @@ def del_service(message):
     for country in list(service_buttons.keys()): 
         if key in country.lower(): 
             del service_buttons[country] 
-            session.delete(f"{FIREBASE_URL}/services/{country}.json")
+            session.delete(f"{FIREBASE_URL}/services/{country}.json") # Firebase থেকে ডিলিট
             bot.reply_to(message, f"✅ {country} Deleted Successfully.") 
             break
 
@@ -259,6 +259,7 @@ def handle_text(message):
         msg = bot.send_message(message.chat.id, "⚙️ 𝙿𝙻𝙴𝙰𝚂𝙴 𝙴𝙽𝚃𝙴𝚁 𝚈𝙾𝚄𝚁 𝚁𝙰𝙽𝙶𝙴\n\n🔢 𝙴𝚡𝚊𝚖𝚙𝚕𝚎 : 2245564", parse_mode="Markdown") 
         bot.register_next_step_handler(msg, process_number) 
     elif message.text == "📱 𝙶𝙴𝚃 𝙽𝚄𝙼𝙱𝙴𝚁": 
+        # বাটনগুলোকে একটির নিচে একটি (Vertical) দেখানোর জন্য row_width=1 ব্যবহার করা হয়েছে
         kb = types.InlineKeyboardMarkup(row_width=1) 
         for country in service_buttons: 
             kb.add(types.InlineKeyboardButton(text=f"{get_flag(country)} {country}", callback_data=f"service_{country}")) 
