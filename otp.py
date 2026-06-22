@@ -11,7 +11,7 @@ from phonenumbers import geocoder
 from telebot import types
 
 # ---------------- CONFIG ----------------
-BOT_TOKEN = "8764978166:AAF7gI33C0VapjDUSVaVYRCOJonhruu72OU"
+BOT_TOKEN = "YOUR_NEW_TOKEN_HERE"  # নতুন টোকেনটি এখানে বসান
 CHANNEL_ID = "-1002670575248"
 API_KEY = "MUBTR1MKUBO"
 API_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
@@ -19,6 +19,9 @@ RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL = "https://t.me/shuvo_number_bot"
 
 bot = telebot.TeleBot(BOT_TOKEN)
+# সার্ভারে কনফ্লিক্ট এড়াতে এটি সবচেয়ে জরুরি
+bot.remove_webhook() 
+
 DB_FILE = "otp_history.pkl"
 
 def get_country_info(number):
@@ -27,12 +30,14 @@ def get_country_info(number):
         parsed_number = phonenumbers.parse("+" + clean_number, None)
         country_name = geocoder.country_name_for_number(parsed_number, "en")
         
-        # আপনার পরিচিত দেশগুলোর পতাকার ম্যাপ
         flags = {
             "Bangladesh": "🇧🇩", "Guinea": "🇬🇳", "United States": "🇺🇸", 
             "India": "🇮🇳", "United Kingdom": "🇬🇧", "Pakistan": "🇵🇰",
             "Nigeria": "🇳🇬", "Indonesia": "🇮🇩", "Saudi Arabia": "🇸🇦",
-            "Russia": "🇷🇺", "China": "🇨🇳", "Germany": "🇩🇪", "Brazil": "🇧🇷"
+            "Russia": "🇷🇺", "China": "🇨🇳", "Germany": "🇩🇪", "Brazil": "🇧🇷",
+            "Armenia": "🇦🇲", "Benin": "🇧🇯", "Central African Republic": "🇨🇫",
+            "Ivory Coast": "🇨🇮", "Tanzania": "🇹🇿", "Lesotho": "🇱🇸", 
+            "Kazakhstan": "🇰🇿", "Tajikistan": "🇹🇯"
         }
         
         flag = flags.get(country_name, "🌐")
@@ -63,7 +68,6 @@ def send_styled_otp(hit):
     service = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
-    # আপনার চাওয়া ফরম্যাট
     text = (f"┏━━━━━━━━━━━━━━━━━━┓\n"
             f"┃ ✦ {masked_number} ✦   ┃\n"
             f"┣━━━━━━━━━━━━━━━━━━┫\n"
