@@ -147,40 +147,48 @@ load_countries_from_firebase()
 def extract_otp(message_text, phone_number=None):
     """
     Message থেকে সঠিক OTP বের করে।
-    ফোন নম্বর বাদ দিয়ে ৪-১০ ডিজিটের standalone সংখ্যা খোঁজে।
+    "138 740" এর মতো space দেওয়া OTP ও সঠিকভাবে ধরে।
+    ফোন নম্বরের digit বাদ দেয়।
     """
     if not message_text:
         return None
 
     phone_digits = clean_number(phone_number) if phone_number else ""
 
-    # ৪ থেকে ১০ ডিজিটের standalone সংখ্যা খোঁজো
-    candidates = re.findall(r'\b(\d{4,10})\b', message_text)
-
-    for candidate in candidates:
+    # STEP 1: "138 740" বা "1 3 8 7 4 0" এর মতো spaced OTP ধরো
+    # digit গুলোর মাঝে শুধু space থাকলে জোড়া লাগাও
+    spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
+    for match in spaced_matches:
+        joined = match.replace(" ", "")
+        if not joined.isdigit():
+            continue
         # ফোন নম্বরের অংশ হলে skip
+        if phone_digits and (joined in phone_digits or phone_digits in joined):
+            continue
+        if 4 <= len(joined) <= 10:
+            return joined
+
+    # STEP 2: সাধারণ ৪-১০ digit এর সংখ্যা খোঁজো (space ছাড়া)
+    candidates = re.findall(r'\b(\d{4,10})\b', message_text)
+    for candidate in candidates:
         if phone_digits:
             if candidate in phone_digits:
                 continue
             if phone_digits in candidate:
                 continue
-            if phone_digits.endswith(candidate):
+            if phone_digits[-10:] in candidate:
                 continue
-            if candidate in phone_digits[-10:]:
-                continue
-        # OTP সাধারণত ৪-১০ digit হয়
         if 4 <= len(candidate) <= 10:
             return candidate
 
-    # fallback: ফোন নম্বর বাদ দিয়ে সব digit থেকে শেষের ৬টা
-    all_text_digits = re.sub(r'\D', '', message_text)
+    # STEP 3: fallback — পুরো message থেকে সব digit জোড়া দিয়ে ফোন নম্বর বাদ দাও
+    all_digits = re.sub(r'\D', '', message_text)
     if phone_digits:
-        all_text_digits = all_text_digits.replace(phone_digits, "")
-        # শেষের ১০ সংখ্যাও বাদ দাও
-        all_text_digits = all_text_digits.replace(phone_digits[-10:], "")
+        all_digits = all_digits.replace(phone_digits, "")
+        all_digits = all_digits.replace(phone_digits[-10:], "")
 
-    if len(all_text_digits) >= 4:
-        return all_text_digits[-6:] if len(all_text_digits) >= 6 else all_text_digits
+    if len(all_digits) >= 4:
+        return all_digits[-6:] if len(all_digits) >= 6 else all_digits
 
     return None
 
