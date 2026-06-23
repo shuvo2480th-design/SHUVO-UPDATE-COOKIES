@@ -3,13 +3,13 @@
 import telebot
 import requests
 import json
-import re
 import pycountry
 import threading
 import time
 import random
 import logging
 import traceback
+import re
 from flask import Flask
 from threading import Thread
 from telebot import types
@@ -39,6 +39,7 @@ FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
 
+# ===== ৪টি হার্ডকোড সার্ভিস বাটন (কোনোভাবেই পরিবর্তন হবে না) =====
 FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
 
 SERVICE_ICONS = {
@@ -91,11 +92,9 @@ def _fb_put(path, data):
 
 def _fb_delete(path):
     try:
-        r = session.delete(f"{FIREBASE_URL}{path}.json", timeout=10)
-        return r.status_code == 200
+        session.delete(f"{FIREBASE_URL}{path}.json", timeout=10)
     except Exception:
         pass
-    return False
 
 # --- ব্যালেন্স ---
 def get_firebase_balance(uid):
@@ -138,69 +137,50 @@ def load_countries_from_firebase():
             service_countries[sname] = []
 
 def save_countries_to_firebase(service_name):
-    """সার্ভিসের দেশের লিস্ট Firebase-এ সেভ করে"""
     _fb_put(f"/service_data/{service_name}", service_countries[service_name])
-
-def delete_country_from_firebase(service_name, country_name):
-    """Firebase থেকে নির্দিষ্ট দেশ মুছে দেয়"""
-    # in-memory থেকে মুছো
-    before = len(service_countries[service_name])
-    service_countries[service_name] = [
-        c for c in service_countries[service_name]
-        if c["name"].lower() != country_name.lower()
-    ]
-    after = len(service_countries[service_name])
-    if before != after:
-        # আপডেট হওয়া লিস্ট Firebase-এ সেভ করো
-        save_countries_to_firebase(service_name)
-        return True
-    return False
-
-def delete_all_countries_from_firebase(service_name):
-    """Firebase থেকে সার্ভিসের সব দেশ মুছে দেয়"""
-    service_countries[service_name] = []
-    # Firebase-এ খালি লিস্ট সেভ
-    _fb_put(f"/service_data/{service_name}", [])
 
 # ===================== STARTUP =====================
 load_all_users_from_firebase()
 load_countries_from_firebase()
 
-# ===================== OTP EXTRACTION =====================
-def extract_otp(message_text):
+# ===================== OTP EXTRACTION (FIXED) =====================
+def extract_otp(message_text, phone_number=None):
     """
-    যেকোনো OTP message থেকে সঠিক ৪-৮ ডিজিটের OTP বের করে।
-    Instagram, WhatsApp, Telegram, Facebook সব ফরম্যাট সাপোর্ট করে।
+    Message থেকে সঠিক OTP বের করে।
+    ফোন নম্বর বাদ দিয়ে ৪-১০ ডিজিটের standalone সংখ্যা খোঁজে।
     """
     if not message_text:
         return None
 
-    text = str(message_text)
+    phone_digits = clean_number(phone_number) if phone_number else ""
 
-    # প্যাটার্ন ১: "Your OTP is: 123456" বা "code is 123456"
-    patterns = [
-        r'\b(?:otp|code|OTP|Code|verification code|verify code|passcode|password)[^\d]*(\d{4,8})\b',
-        r'\b(\d{4,8})\b(?:[^\d]*(?:is your|as your|to verify|for verification))',
-        r'(?:^|\s)(\d{6})(?:\s|$)',   # standalone 6-digit
-        r'(?:^|\s)(\d{4})(?:\s|$)',   # standalone 4-digit
-        r'(\d{6,8})',                  # যেকোনো ৬-৮ ডিজিট
-        r'(\d{4,5})',                  # যেকোনো ৪-৫ ডিজিট (fallback)
-    ]
+    # ৪ থেকে ১০ ডিজিটের standalone সংখ্যা খোঁজো
+    candidates = re.findall(r'\b(\d{4,10})\b', message_text)
 
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            otp = match.group(1)
-            # সাধারণ বছর বা ফোন নম্বর এড়িয়ে যাও
-            if len(otp) == 4 and otp.startswith(('19', '20')):
+    for candidate in candidates:
+        # ফোন নম্বরের অংশ হলে skip
+        if phone_digits:
+            if candidate in phone_digits:
                 continue
-            return otp
+            if phone_digits in candidate:
+                continue
+            if phone_digits.endswith(candidate):
+                continue
+            if candidate in phone_digits[-10:]:
+                continue
+        # OTP সাধারণত ৪-১০ digit হয়
+        if 4 <= len(candidate) <= 10:
+            return candidate
 
-    # সর্বশেষ fallback: শুধু ডিজিট বের করে শেষের ৬টা নাও
-    digits = re.findall(r'\d+', text)
-    all_digits = ''.join(digits)
-    if len(all_digits) >= 4:
-        return all_digits[-6:] if len(all_digits) >= 6 else all_digits[-4:]
+    # fallback: ফোন নম্বর বাদ দিয়ে সব digit থেকে শেষের ৬টা
+    all_text_digits = re.sub(r'\D', '', message_text)
+    if phone_digits:
+        all_text_digits = all_text_digits.replace(phone_digits, "")
+        # শেষের ১০ সংখ্যাও বাদ দাও
+        all_text_digits = all_text_digits.replace(phone_digits[-10:], "")
+
+    if len(all_text_digits) >= 4:
+        return all_text_digits[-6:] if len(all_text_digits) >= 6 else all_text_digits
 
     return None
 
@@ -331,16 +311,10 @@ def broadcast(message):
 
 @bot.message_handler(commands=['add'])
 def add_service(message):
-    """
-    ফরম্যাট: /add Facebook|Guinea|2246545
-    Firebase /service_data/{ServiceName} তে সেভ হবে।
-    """
     if str(message.from_user.id) != ADMIN_ID:
         return
-
     raw   = message.text.replace("/add", "", 1).strip()
     parts = None
-
     if raw.count("|") >= 2:
         parts = [p.strip() for p in raw.split("|", 2)]
     elif raw.count("|") == 1 and ":" in raw.split("|", 1)[1]:
@@ -352,15 +326,12 @@ def add_service(message):
     else:
         bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545")
         return
-
     if len(parts) < 3 or not all(parts):
         bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545")
         return
-
     service_name = parts[0]
     country_name = parts[1]
     rid          = parts[2]
-
     if service_name not in FIXED_SERVICES:
         bot.reply_to(
             message,
@@ -368,7 +339,6 @@ def add_service(message):
             + "\n".join(f"• {s}" for s in FIXED_SERVICES)
         )
         return
-
     countries = service_countries[service_name]
     found = False
     for c in countries:
@@ -378,10 +348,7 @@ def add_service(message):
             break
     if not found:
         countries.append({"name": country_name, "rid": rid})
-
-    # Firebase-এ সেভ করো
     save_countries_to_firebase(service_name)
-
     bot.reply_to(
         message,
         f"✅ Added Successfully\n"
@@ -392,30 +359,31 @@ def add_service(message):
 
 @bot.message_handler(commands=['del'])
 def del_service(message):
-    """
-    /del Facebook|Guinea  → Facebook থেকে Guinea ডিলিট (Firebase থেকেও)
-    /del Facebook         → Facebook-এর সব দেশ ডিলিট (Firebase থেকেও)
-    """
     if str(message.from_user.id) != ADMIN_ID:
         return
-
     text = message.text.replace("/del", "", 1).strip()
-
     if "|" in text:
         service_name, country_name = [p.strip() for p in text.split("|", 1)]
         if service_name not in FIXED_SERVICES:
             bot.reply_to(message, "❌ সার্ভিসটি পাওয়া যায়নি।")
             return
-        deleted = delete_country_from_firebase(service_name, country_name)
-        if deleted:
-            bot.reply_to(message, f"✅ {service_name} → {country_name} ডিলিট হয়েছে।\n🗑️ Firebase থেকেও মুছে গেছে।")
+        before = len(service_countries[service_name])
+        service_countries[service_name] = [
+            c for c in service_countries[service_name]
+            if c["name"].lower() != country_name.lower()
+        ]
+        after = len(service_countries[service_name])
+        if before != after:
+            save_countries_to_firebase(service_name)
+            bot.reply_to(message, f"✅ {service_name} → {country_name} ডিলিট হয়েছে।")
         else:
             bot.reply_to(message, "❌ দেশটি পাওয়া যায়নি।")
     else:
         service_name = text
         if service_name in FIXED_SERVICES:
-            delete_all_countries_from_firebase(service_name)
-            bot.reply_to(message, f"✅ {service_name}-এর সব দেশ ডিলিট হয়েছে।\n🗑️ Firebase থেকেও মুছে গেছে।")
+            service_countries[service_name] = []
+            save_countries_to_firebase(service_name)
+            bot.reply_to(message, f"✅ {service_name}-এর সব দেশ ডিলিট হয়েছে।")
         else:
             bot.reply_to(message, "❌ সার্ভিসটি পাওয়া যায়নি।")
 
@@ -445,7 +413,7 @@ def strd_command(message):
     search_msg = bot.send_message(
         chat_id,
         "🔍 OTP SEARCHING (∞)...\n"
-        "⏳ Number change না হওয়া পর্যন্ত চালু থাকবে..."
+        "⏳ Number change na howa porynto chalu thakbe..."
     )
     threading.Thread(
         target=infinite_otp_search,
@@ -479,7 +447,6 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
                         msg_id = item.get("id")
-                        raw_message = item.get("message", "")
                         if (
                             clean_number(item.get("number", "")) in clean_number(current_num)
                             and msg_id not in used_otps.get(chat_id, [])
@@ -488,8 +455,8 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                                 used_otps[chat_id] = []
                             used_otps[chat_id].append(msg_id)
 
-                            # ✅ সঠিক OTP extraction
-                            otp = extract_otp(raw_message)
+                            # ✅ FIXED: সঠিক OTP extraction
+                            otp = extract_otp(item.get("message", ""), current_num)
                             if not otp:
                                 continue
 
@@ -541,8 +508,7 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                 data = r.json()
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
-                        msg_id      = item.get("id")
-                        raw_message = item.get("message", "")
+                        msg_id = item.get("id")
                         if (
                             clean_number(item.get("number", "")) in clean_number(phone_number)
                             and msg_id not in used_otps.get(chat_id, [])
@@ -551,8 +517,8 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                                 used_otps[chat_id] = []
                             used_otps[chat_id].append(msg_id)
 
-                            # ✅ সঠিক OTP extraction
-                            otp = extract_otp(raw_message)
+                            # ✅ FIXED: সঠিক OTP extraction
+                            otp = extract_otp(item.get("message", ""), phone_number)
                             if not otp:
                                 continue
 
@@ -638,7 +604,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 ))
                 kb.row(
                     types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"),
-                    types.InlineKeyboardButton("🔍 OTP SEARCH",    callback_data="otp_search")
+                    types.InlineKeyboardButton("🔍 OTP SEARCH",  callback_data="otp_search")
                 )
                 kb.add(types.InlineKeyboardButton("🔐 OTP GROUP", url=GROUP_URL))
 
