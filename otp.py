@@ -3,11 +3,11 @@
 import requests
 import time
 import telebot
+import pickle
+import os
 import re
 import random
 import threading
-import json
-import os
 import pycountry
 import phonenumbers
 from phonenumbers import geocoder
@@ -20,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Channel Bot is Running!"
+    return "Bot is Running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -30,26 +30,29 @@ def keep_alive():
     t.start()
 
 # ===================== CONFIG =====================
-# বট ১ — আগের বট
-BOT_TOKEN_1  = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
-# বট ২ — নতুন বট
-BOT_TOKEN_2  = "8658807204:AAH6FSK5X0_haGRCQ_d-Vq4Gh1wLD0EsRgs"
+# বট ১ — console API
+BOT_TOKEN_1 = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
+# বট ২ — success-otp API
+BOT_TOKEN_2 = "8658807204:AAH6FSK5X0_haGRCQ_d-Vq4Gh1wLD0EsRgs"
 
-CHANNEL_ID       = "-1002670575248"
-API_KEY          = "MUBTR1MKUBO"
-SUCCESS_OTP_URL  = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
+CHANNEL_ID        = "-1002670575248"
+API_KEY           = "MUBTR1MKUBO"
+CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
+SUCCESS_OTP_URL   = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
-PANEL_BOT_URL    = "https://t.me/shuvo_number_bot"
-HEADERS          = {"mauthapi": API_KEY}
+PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
+HEADERS           = {"mauthapi": API_KEY}
+DB_FILE           = "otp_history.pkl"
 
-# ২টা bot object
 bot1 = telebot.TeleBot(BOT_TOKEN_1)
 bot2 = telebot.TeleBot(BOT_TOKEN_2)
+bot1.remove_webhook()
+bot2.remove_webhook()
 
-# ===================== পাঠানো OTP ট্র্যাক (memory) =====================
+# বট ২ এর পাঠানো OTP track (memory)
 sent_otp_ids = set()
 
-# ===================== দেশের পতাকা =====================
+# ===================== পতাকা (auto — সব দেশ) =====================
 COUNTRY_NAME_MAP = {
     "ivory coast":    "CI",
     "ivory coast 2":  "CI",
@@ -79,6 +82,12 @@ COUNTRY_NAME_MAP = {
     "micronesia":     "FM",
     "curacao":        "CW",
     "kosovo":         "XK",
+    "lesotho":        "LS",
+    "benin":          "BJ",
+    "armenia":        "AM",
+    "kazakhstan":     "KZ",
+    "tajikistan":     "TJ",
+    "central african republic": "CF",
 }
 
 def get_flag(country_name):
@@ -101,30 +110,83 @@ def get_flag(country_name):
         pass
     return "🌐"
 
-def get_country_from_number(number):
-    """ফোন নম্বর থেকে দেশের নাম বের করো"""
+# ===================== বট ১ এর ফাংশন (console API — হুবহু আগের মতো) =====================
+def get_country_info(number):
     try:
-        clean = re.sub(r'\D', '', str(number))
-        parsed = phonenumbers.parse("+" + clean, None)
-        country_name = geocoder.country_name_for_number(parsed, "en")
-        return country_name if country_name else "Unknown"
-    except Exception:
-        return "Unknown"
+        clean_number = re.sub(r'\D', '', str(number))
+        parsed_number = phonenumbers.parse("+" + clean_number, None)
+        country_name = geocoder.country_name_for_number(parsed_number, "en")
+        flag = get_flag(country_name)
+        return flag, country_name if country_name else "Unknown", "English"
+    except:
+        return "🌐", "Unknown", "English"
 
 def detect_service(msg):
-    msg_upper = msg.upper()
-    if any(k in msg_upper for k in ["FACEBOOK", "FB"]):
-        return "Facebook"
-    if any(k in msg_upper for k in ["INSTAGRAM", "IG", "INSTA"]):
-        return "Instagram"
-    if any(k in msg_upper for k in ["WHATSAPP", "WA"]):
-        return "WhatsApp"
-    if "TELEGRAM" in msg_upper:
-        return "Telegram"
+    msg = msg.upper()
+    if any(k in msg for k in ["FACEBOOK", "FB"]): return "Facebook"
+    if any(k in msg for k in ["INSTAGRAM", "IG", "INSTA"]): return "Instagram"
+    if any(k in msg for k in ["WHATSAPP", "WA"]): return "WhatsApp"
     return "OTP"
 
+def send_styled_otp(hit):
+    otp_full    = hit.get("message", "")
+    full_number = str(hit.get("range", ""))
+
+    flag, country, lang = get_country_info(full_number)
+
+    range_clean    = re.sub(r'[Xx]', '', full_number)
+    random_digits  = ''.join([str(random.randint(0, 9)) for _ in range(4)])
+    masked_number  = f"{full_number[:4]}★★{random_digits}"
+
+    otp_match = re.search(r'\b\d{5,8}\b', otp_full)
+    otp_code  = otp_match.group() if otp_match else ''.join(filter(str.isdigit, otp_full))[:8]
+
+    service      = detect_service(otp_full)
+    current_time = time.strftime("%H:%M")
+
+    text = (f"┏━━━━━━━━━━━━━━━━━━┓\n"
+            f"┃ ✦ {masked_number} ✦   ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ {flag} {country} • {service} ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ ⏰ {current_time} • {lang} ┃\n"
+            f"┗━━━━━━━━━━━━━━━━━━┛")
+
+    markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton(text=f"📋 {otp_code}", copy_text=types.CopyTextButton(text=otp_code)))
+    markup.row(types.InlineKeyboardButton(text="▰ RANGE COPY ▰", copy_text=types.CopyTextButton(text=range_clean)))
+    markup.row(
+        types.InlineKeyboardButton("✦ NUMBER BOT ✦", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("✦ METHOD ✦", url=RANGE_CHANNEL_URL)
+    )
+
+    msg = bot1.send_message(CHANNEL_ID, text, reply_markup=markup, parse_mode="HTML")
+    threading.Thread(
+        target=lambda: (time.sleep(90), bot1.delete_message(CHANNEL_ID, msg.message_id)),
+        daemon=True
+    ).start()
+
+# বট ১ loop
+def run_bot1():
+    print("🚀 BOT-1 (console) started...")
+    while True:
+        try:
+            res = requests.get(CONSOLE_URL, headers=HEADERS, timeout=10).json()
+            if res.get("meta", {}).get("status") == "ok":
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                for hit in res.get("data", {}).get("hits", []):
+                    msg_time = str(hit.get("time", ""))
+                    if msg_time not in history:
+                        send_styled_otp(hit)
+                        history[msg_time] = True
+                        pickle.dump(history, open(DB_FILE, "wb"))
+                        time.sleep(1.5)
+        except Exception as e:
+            print(f"[BOT-1 Error] {e}")
+        time.sleep(10)
+
+# ===================== বট ২ এর ফাংশন (success-otp API) =====================
 def extract_otp(message_text, phone_number=None):
-    """Message থেকে সঠিক OTP বের করে — space দেওয়া OTP ও ধরে"""
     if not message_text:
         return None
     phone_digits = re.sub(r'\D', '', str(phone_number)) if phone_number else ""
@@ -161,25 +223,28 @@ def extract_otp(message_text, phone_number=None):
         return all_digits[-6:] if len(all_digits) >= 6 else all_digits
     return None
 
-def send_to_channel(bot_obj, item):
-    """Channel এ OTP message পাঠাও"""
+def get_country_from_number(number):
+    try:
+        clean = re.sub(r'\D', '', str(number))
+        parsed = phonenumbers.parse("+" + clean, None)
+        country_name = geocoder.country_name_for_number(parsed, "en")
+        return country_name if country_name else "Unknown"
+    except Exception:
+        return "Unknown"
+
+def send_to_channel_bot2(item):
     otp_msg     = item.get("message", "")
     full_number = str(item.get("number", ""))
-    msg_id      = item.get("id", "")
 
-    # দেশের নাম ও পতাকা
     country_name = item.get("country", "") or get_country_from_number(full_number)
     flag         = get_flag(country_name)
 
-    # OTP extract
     otp_code = extract_otp(otp_msg, full_number)
     if not otp_code:
         otp_code = re.sub(r'\D', '', otp_msg)[-6:] or "------"
 
-    # সার্ভিস ধরো
     service = detect_service(otp_msg)
 
-    # নাম্বার mask করো
     clean_num = re.sub(r'\D', '', full_number)
     if len(clean_num) >= 8:
         masked = clean_num[:4] + "★★" + clean_num[-4:]
@@ -188,15 +253,13 @@ def send_to_channel(bot_obj, item):
 
     current_time = time.strftime("%H:%M")
 
-    text = (
-        f"┏━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ ✦ {masked} ✦   ┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ {flag} {country_name} • {service} ┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ ⏰ {current_time} • English ┃\n"
-        f"┗━━━━━━━━━━━━━━━━━━┛"
-    )
+    text = (f"┏━━━━━━━━━━━━━━━━━━┓\n"
+            f"┃ ✦ {masked} ✦   ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ {flag} {country_name} • {service} ┃\n"
+            f"┣━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃ ⏰ {current_time} • English ┃\n"
+            f"┗━━━━━━━━━━━━━━━━━━┛")
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
@@ -213,19 +276,17 @@ def send_to_channel(bot_obj, item):
     )
 
     try:
-        msg = bot_obj.send_message(CHANNEL_ID, text, reply_markup=markup)
-        # ৯০ সেকেন্ড পরে ডিলিট
+        msg = bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
         threading.Thread(
-            target=lambda: (time.sleep(90), bot_obj.delete_message(CHANNEL_ID, msg.message_id)),
+            target=lambda: (time.sleep(90), bot2.delete_message(CHANNEL_ID, msg.message_id)),
             daemon=True
         ).start()
     except Exception as e:
-        print(f"[Send Error] {e}")
+        print(f"[BOT-2 Send Error] {e}")
 
-# ===================== OTP POLLER =====================
-def poll_success_otp(bot_obj, bot_name):
-    """success-otp API poll করে নতুন OTP আসলে channel এ পাঠাবে"""
-    print(f"✅ {bot_name} polling started...")
+# বট ২ loop
+def run_bot2():
+    print("🚀 BOT-2 (success-otp) started...")
     while True:
         try:
             r    = requests.get(SUCCESS_OTP_URL, headers=HEADERS, timeout=10)
@@ -236,34 +297,20 @@ def poll_success_otp(bot_obj, bot_name):
                     msg_id = str(item.get("id", ""))
                     if msg_id and msg_id not in sent_otp_ids:
                         sent_otp_ids.add(msg_id)
-                        send_to_channel(bot_obj, item)
+                        send_to_channel_bot2(item)
                         time.sleep(1.5)
         except Exception as e:
-            print(f"[{bot_name} Poll Error] {e}")
+            print(f"[BOT-2 Error] {e}")
         time.sleep(5)
 
 # ===================== MAIN =====================
 if __name__ == "__main__":
     keep_alive()
 
-    # বট ১ — thread এ চলবে
-    t1 = threading.Thread(
-        target=poll_success_otp,
-        args=(bot1, "BOT-1"),
-        daemon=True
-    )
-    # বট ২ — thread এ চলবে
-    t2 = threading.Thread(
-        target=poll_success_otp,
-        args=(bot2, "BOT-2"),
-        daemon=True
-    )
+    threading.Thread(target=run_bot1, daemon=True).start()
+    threading.Thread(target=run_bot2, daemon=True).start()
 
-    t1.start()
-    t2.start()
+    print("✅ Both bots running!")
 
-    print("🚀 Both bots running!")
-
-    # main thread জীবিত রাখো
     while True:
         time.sleep(60)
