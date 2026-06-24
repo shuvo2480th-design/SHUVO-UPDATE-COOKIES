@@ -455,19 +455,23 @@ def del_service(message):
         return
     text = message.text.replace("/del", "", 1).strip()
     if "|" in text:
-        service_name, country_name = [p.strip() for p in text.split("|", 1)]
+        service_name, country_query = [p.strip() for p in text.split("|", 1)]
         if service_name not in FIXED_SERVICES:
             bot.reply_to(message, "❌ সার্ভিসটি পাওয়া যায়নি।")
             return
-        before = len(service_countries[service_name])
-        service_countries[service_name] = [
+        query_lower = country_query.lower()
+        matched = [
             c for c in service_countries[service_name]
-            if c["name"].lower() != country_name.lower()
+            if query_lower in c["name"].lower() or c["name"].lower() in query_lower
         ]
-        after = len(service_countries[service_name])
-        if before != after:
+        if matched:
+            deleted_names = ", ".join(c["name"] for c in matched)
+            service_countries[service_name] = [
+                c for c in service_countries[service_name]
+                if c not in matched
+            ]
             save_countries_to_firebase(service_name)
-            bot.reply_to(message, f"✅ {service_name} → {country_name} ডিলিট হয়েছে।")
+            bot.reply_to(message, f"✅ {service_name} → {deleted_names} ডিলিট হয়েছে।")
         else:
             bot.reply_to(message, "❌ দেশটি পাওয়া যায়নি।")
     else:
