@@ -10,6 +10,10 @@ import random
 import logging
 import traceback
 import re
+import hmac
+import hashlib
+import base64
+import struct
 from flask import Flask
 from threading import Thread
 from telebot import types
@@ -143,6 +147,29 @@ def save_countries_to_firebase(service_name):
 load_all_users_from_firebase()
 load_countries_from_firebase()
 
+# ===================== TOTP (2FA) — stdlib only =====================
+def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
+    """
+    Google Authenticator / website-compatible TOTP।
+    secret_b32 = ওয়েবসাইট থেকে পাওয়া Base32 key (যেমন: JBSWY3DPEHPK3PXP)
+    """
+    try:
+        # padding ঠিক করো
+        secret_b32 = secret_b32.upper().strip().replace(" ", "")
+        pad = (8 - len(secret_b32) % 8) % 8
+        secret_bytes = base64.b32decode(secret_b32 + "=" * pad)
+        # time counter
+        counter = int(time.time()) // period
+        counter_bytes = struct.pack(">Q", counter)
+        # HMAC-SHA1
+        h = hmac.new(secret_bytes, counter_bytes, hashlib.sha1).digest()
+        offset = h[-1] & 0x0F
+        code_int = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF
+        code = str(code_int % (10 ** digits)).zfill(digits)
+        return code
+    except Exception:
+        return None
+
 # ===================== OTP EXTRACTION (FIXED) =====================
 def extract_otp(message_text, phone_number=None):
     """
@@ -156,13 +183,11 @@ def extract_otp(message_text, phone_number=None):
     phone_digits = clean_number(phone_number) if phone_number else ""
 
     # STEP 1: "138 740" বা "1 3 8 7 4 0" এর মতো spaced OTP ধরো
-    # digit গুলোর মাঝে শুধু space থাকলে জোড়া লাগাও
     spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
     for match in spaced_matches:
         joined = match.replace(" ", "")
         if not joined.isdigit():
             continue
-        # ফোন নম্বরের অংশ হলে skip
         if phone_digits and (joined in phone_digits or phone_digits in joined):
             continue
         if 4 <= len(joined) <= 10:
@@ -204,12 +229,70 @@ def safe_execute(func):
 def clean_number(num):
     return "".join(filter(str.isdigit, str(num)))
 
+# দেশের নাম → পতাকা (special cases সহ)
+COUNTRY_NAME_MAP = {
+    "ivory coast":      "CI",
+    "ivory coast 2":    "CI",
+    "côte d'ivoire":    "CI",
+    "cote d'ivoire":    "CI",
+    "cote divoire":     "CI",
+    "guinea bissau":    "GW",
+    "guinea-bissau":    "GW",
+    "south korea":      "KR",
+    "north korea":      "KP",
+    "russia":           "RU",
+    "tanzania":         "TZ",
+    "syria":            "SY",
+    "iran":             "IR",
+    "vietnam":          "VN",
+    "laos":             "LA",
+    "moldova":          "MD",
+    "congo":            "CG",
+    "dr congo":         "CD",
+    "democratic republic of congo": "CD",
+    "palestine":        "PS",
+    "kosovo":           "XK",
+    "taiwan":           "TW",
+    "cape verde":       "CV",
+    "east timor":       "TL",
+    "myanmar":          "MM",
+    "swaziland":        "SZ",
+    "eswatini":         "SZ",
+    "macau":            "MO",
+    "saint kitts":      "KN",
+    "saint lucia":      "LC",
+    "saint vincent":    "VC",
+    "micronesia":       "FM",
+    "curacao":          "CW",
+}
+
 def get_flag(country_name):
+    """দেশের নাম থেকে পতাকা ইমোজি বের করে — 🌍 ছাড়া।"""
+    if not country_name:
+        return ""
+    name_lower = country_name.lower().strip()
+
+    # special case map চেক
+    if name_lower in COUNTRY_NAME_MAP:
+        alpha2 = COUNTRY_NAME_MAP[name_lower]
+        return "".join(chr(ord(x) + 127397) for x in alpha2.upper())
+
+    # pycountry দিয়ে খোঁজো
     try:
         c = pycountry.countries.lookup(country_name)
         return "".join(chr(ord(x) + 127397) for x in c.alpha_2.upper())
     except Exception:
-        return "🌍"
+        pass
+
+    # fuzzy search
+    try:
+        results = pycountry.countries.search_fuzzy(country_name)
+        if results:
+            return "".join(chr(ord(x) + 127397) for x in results[0].alpha_2.upper())
+    except Exception:
+        pass
+
+    return ""   # পতাকা না পেলে খালি (🌍 না)
 
 def is_joined(user_id):
     try:
@@ -261,9 +344,10 @@ def country_menu_markup(service_name):
         kb.add(types.InlineKeyboardButton("⚠️ কোনো দেশ এড হয়নি", callback_data="noop"))
     else:
         for idx, c in enumerate(countries):
-            flag = get_flag(c["name"])
+            flag = get_flag(c["name"])   # 🌍 নেই, শুধু পতাকা
+            label = f"{flag} {c['name']}" if flag else c["name"]
             kb.add(types.InlineKeyboardButton(
-                text=f"{flag} {c['name']}",
+                text=label,
                 callback_data=f"ct_{service_name}__{idx}"
             ))
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="back_to_services"))
@@ -463,7 +547,6 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                                 used_otps[chat_id] = []
                             used_otps[chat_id].append(msg_id)
 
-                            # ✅ FIXED: সঠিক OTP extraction
                             otp = extract_otp(item.get("message", ""), current_num)
                             if not otp:
                                 continue
@@ -525,7 +608,6 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                                 used_otps[chat_id] = []
                             used_otps[chat_id].append(msg_id)
 
-                            # ✅ FIXED: সঠিক OTP extraction
                             otp = extract_otp(item.get("message", ""), phone_number)
                             if not otp:
                                 continue
@@ -690,7 +772,14 @@ def handle_text(message):
         )
 
     elif txt == "🔐 GET 2FA CODE":
-        msg = bot.send_message(message.chat.id, "🔐 PLEASE ENTER YOUR 2FA KEY")
+        msg = bot.send_message(
+            message.chat.id,
+            "🔐 আপনার 2FA Secret Key পাঠান\n\n"
+            "📌 কোথায় পাবেন:\n"
+            "• Facebook/Instagram → Settings → Security → Two-Factor Authentication → Authentication App → Setup Key\n"
+            "• WhatsApp → Settings → Account → Two-step verification → এর Secret Key\n\n"
+            "🔑 Example: JBSWY3DPEHPK3PXP"
+        )
         bot.register_next_step_handler(msg, process_2fa)
 
     elif txt == "👤 PROFILE":
@@ -717,10 +806,30 @@ def handle_text(message):
         )
 
 def process_2fa(message):
-    code = str(random.randint(100000, 999999))
-    kb   = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(text=code, copy_text=types.CopyTextButton(text=code)))
-    bot.send_message(message.chat.id, f"🔐 YOUR 2FA CODE ✅\n\n{code}", reply_markup=kb)
+    secret_key = message.text.strip().replace(" ", "")
+    code = _totp_generate(secret_key)
+
+    if code:
+        # কত সেকেন্ড বাকি আছে হিসাব করো
+        remaining = 30 - (int(time.time()) % 30)
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton(
+            text=code, copy_text=types.CopyTextButton(text=code)
+        ))
+        bot.send_message(
+            message.chat.id,
+            f"🔐 YOUR 2FA CODE ✅\n\n"
+            f"🔑 Code : {code}\n"
+            f"⏳ Valid for : {remaining} seconds",
+            reply_markup=kb
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            "❌ Invalid Secret Key!\n\n"
+            "✅ সঠিক Base32 Key দিন।\n"
+            "Example: JBSWY3DPEHPK3PXP"
+        )
 
 # ===================== CALLBACK HANDLER =====================
 @safe_execute
