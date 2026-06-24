@@ -234,18 +234,22 @@ def get_country_from_number(number):
 
 def send_to_channel_bot2(item):
     otp_msg     = item.get("message", "")
+    # success-otp API তে "number" field এ full number থাকে
     full_number = str(item.get("number", ""))
+    clean_num   = re.sub(r'\D', '', full_number)
 
-    country_name = item.get("country", "") or get_country_from_number(full_number)
+    # দেশ ও পতাকা — number থেকে auto
+    country_name = get_country_from_number(full_number)
     flag         = get_flag(country_name)
 
+    # সঠিক OTP extract
     otp_code = extract_otp(otp_msg, full_number)
     if not otp_code:
         otp_code = re.sub(r'\D', '', otp_msg)[-6:] or "------"
 
     service = detect_service(otp_msg)
 
-    clean_num = re.sub(r'\D', '', full_number)
+    # নাম্বার mask
     if len(clean_num) >= 8:
         masked = clean_num[:4] + "★★" + clean_num[-4:]
     else:
@@ -284,7 +288,7 @@ def send_to_channel_bot2(item):
     except Exception as e:
         print(f"[BOT-2 Send Error] {e}")
 
-# বট ২ loop
+# বট ২ loop — success-otp API (bot.py এর auto_check_otp এর মতো)
 def run_bot2():
     print("🚀 BOT-2 (success-otp) started...")
     while True:
@@ -301,7 +305,7 @@ def run_bot2():
                         time.sleep(1.5)
         except Exception as e:
             print(f"[BOT-2 Error] {e}")
-        time.sleep(5)
+        time.sleep(2)
 
 # ===================== MAIN =====================
 if __name__ == "__main__":
