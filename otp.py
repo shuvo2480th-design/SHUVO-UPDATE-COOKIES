@@ -14,6 +14,7 @@ from phonenumbers import geocoder
 from telebot import types
 from flask import Flask
 from threading import Thread
+from datetime import datetime, timezone, timedelta
 
 # ===================== FLASK KEEP-ALIVE =====================
 app = Flask('')
@@ -36,10 +37,14 @@ CHANNEL_ID        = "-1002670575248"
 API_KEY           = "MUBTR1MKUBO"
 CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
 SUCCESS_OTP_URL   = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
-RANGE_CHANNEL_URL = "https://t.me/range_channele"
-PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 HEADERS           = {"mauthapi": API_KEY}
 DB_FILE           = "otp_history.pkl"
+
+# বাংলাদেশ সময় (UTC+6)
+BD_TZ = timezone(timedelta(hours=6))
+
+def bd_time():
+    return datetime.now(BD_TZ).strftime("%H:%M")
 
 bot1 = telebot.TeleBot(BOT_TOKEN_1)
 bot2 = telebot.TeleBot(BOT_TOKEN_2)
@@ -48,11 +53,12 @@ bot2.remove_webhook()
 
 # sent_otp_ids — restart এও পুরনো OTP মনে থাকবে
 SENT_OTP_FILE = "sent_otp_ids.pkl"
+
 def load_sent_ids():
     if os.path.exists(SENT_OTP_FILE):
         try:
             return pickle.load(open(SENT_OTP_FILE, "rb"))
-        except:
+        except Exception:
             pass
     return set()
 
@@ -63,76 +69,116 @@ def save_sent_id(msg_id):
 
 sent_otp_ids = load_sent_ids()
 
-# ===================== পতাকা + দেশের short code =====================
+# ===================== দেশ ম্যাপ =====================
 COUNTRY_NAME_MAP = {
-    "ivory coast":    "CI", "ivory coast 2":  "CI",
-    "côte d'ivoire":  "CI", "cote d'ivoire":  "CI", "cote divoire": "CI",
-    "guinea bissau":  "GW", "guinea-bissau":  "GW",
-    "south korea":    "KR", "north korea":    "KP",
-    "russia":         "RU", "tanzania":       "TZ",
-    "syria":          "SY", "iran":           "IR",
-    "vietnam":        "VN", "laos":           "LA",
-    "moldova":        "MD", "congo":          "CG",
-    "dr congo":       "CD", "palestine":      "PS",
-    "taiwan":         "TW", "cape verde":     "CV",
-    "myanmar":        "MM", "eswatini":       "SZ",
-    "swaziland":      "SZ", "east timor":     "TL",
-    "micronesia":     "FM", "curacao":        "CW",
-    "kosovo":         "XK", "lesotho":        "LS",
-    "benin":          "BJ", "armenia":        "AM",
-    "kazakhstan":     "KZ", "tajikistan":     "TJ",
+    "ivory coast": "CI", "ivory coast 2": "CI",
+    "côte d'ivoire": "CI", "cote d'ivoire": "CI", "cote divoire": "CI",
+    "guinea bissau": "GW", "guinea-bissau": "GW",
+    "south korea": "KR", "north korea": "KP",
+    "russia": "RU", "tanzania": "TZ",
+    "syria": "SY", "iran": "IR",
+    "vietnam": "VN", "laos": "LA",
+    "moldova": "MD", "congo": "CG",
+    "dr congo": "CD", "palestine": "PS",
+    "taiwan": "TW", "cape verde": "CV",
+    "myanmar": "MM", "eswatini": "SZ",
+    "swaziland": "SZ", "east timor": "TL",
+    "micronesia": "FM", "curacao": "CW",
+    "kosovo": "XK", "lesotho": "LS",
+    "benin": "BJ", "armenia": "AM",
+    "kazakhstan": "KZ", "tajikistan": "TJ",
     "central african republic": "CF",
-    "venezuela":      "VE", "bolivia":        "BO",
-    "trinidad":       "TT", "haiti":          "HT",
-    "cameroon":       "CM", "senegal":        "SN",
-    "mali":           "ML", "niger":          "NE",
-    "burkina faso":   "BF", "togo":           "TG",
-    "ghana":          "GH", "sierra leone":   "SL",
-    "liberia":        "LR", "gambia":         "GM",
-    "guinea":         "GN", "mauritania":     "MR",
-    "ethiopia":       "ET", "kenya":          "KE",
-    "uganda":         "UG", "rwanda":         "RW",
-    "zambia":         "ZM", "zimbabwe":       "ZW",
-    "mozambique":     "MZ", "angola":         "AO",
-    "malawi":         "MW", "madagascar":     "MG",
-    "somalia":        "SO", "sudan":          "SD",
-    "chad":           "TD", "nigeria":        "NG",
-    "egypt":          "EG", "morocco":        "MA",
-    "algeria":        "DZ", "tunisia":        "TN",
-    "libya":          "LY", "south africa":   "ZA",
-    "iraq":           "IQ", "jordan":         "JO",
-    "saudi arabia":   "SA", "yemen":          "YE",
-    "oman":           "OM", "uae":            "AE",
-    "kuwait":         "KW", "bahrain":        "BH",
-    "qatar":          "QA", "lebanon":        "LB",
-    "pakistan":       "PK", "bangladesh":     "BD",
-    "india":          "IN", "sri lanka":      "LK",
-    "nepal":          "NP", "indonesia":      "ID",
-    "philippines":    "PH", "thailand":       "TH",
-    "malaysia":       "MY", "cambodia":       "KH",
-    "china":          "CN", "japan":          "JP",
-    "ukraine":        "UA", "poland":         "PL",
-    "romania":        "RO", "hungary":        "HU",
-    "czech":          "CZ", "slovakia":       "SK",
-    "bulgaria":       "BG", "serbia":         "RS",
-    "croatia":        "HR", "georgia":        "GE",
-    "azerbaijan":     "AZ", "uzbekistan":     "UZ",
-    "kyrgyzstan":     "KG", "turkmenistan":   "TM",
-    "mongolia":       "MN", "belarus":        "BY",
-    "estonia":        "EE", "latvia":         "LV",
-    "lithuania":      "LT", "mexico":         "MX",
-    "colombia":       "CO", "peru":           "PE",
-    "chile":          "CL", "ecuador":        "EC",
-    "paraguay":       "PY", "uruguay":        "UY",
-    "cuba":           "CU", "jamaica":        "JM",
-    "dominican":      "DO", "guatemala":      "GT",
-    "honduras":       "HN", "nicaragua":      "NI",
-    "costa rica":     "CR", "panama":         "PA",
-    "el salvador":    "SV", "belize":         "BZ",
+    "venezuela": "VE", "bolivia": "BO",
+    "trinidad": "TT", "haiti": "HT",
+    "cameroon": "CM", "senegal": "SN",
+    "mali": "ML", "niger": "NE",
+    "burkina faso": "BF", "togo": "TG",
+    "ghana": "GH", "sierra leone": "SL",
+    "liberia": "LR", "gambia": "GM",
+    "guinea": "GN", "mauritania": "MR",
+    "ethiopia": "ET", "kenya": "KE",
+    "uganda": "UG", "rwanda": "RW",
+    "zambia": "ZM", "zimbabwe": "ZW",
+    "mozambique": "MZ", "angola": "AO",
+    "malawi": "MW", "madagascar": "MG",
+    "somalia": "SO", "sudan": "SD",
+    "chad": "TD", "nigeria": "NG",
+    "egypt": "EG", "morocco": "MA",
+    "algeria": "DZ", "tunisia": "TN",
+    "libya": "LY", "south africa": "ZA",
+    "iraq": "IQ", "jordan": "JO",
+    "saudi arabia": "SA", "yemen": "YE",
+    "oman": "OM", "uae": "AE",
+    "kuwait": "KW", "bahrain": "BH",
+    "qatar": "QA", "lebanon": "LB",
+    "pakistan": "PK", "bangladesh": "BD",
+    "india": "IN", "sri lanka": "LK",
+    "nepal": "NP", "indonesia": "ID",
+    "philippines": "PH", "thailand": "TH",
+    "malaysia": "MY", "cambodia": "KH",
+    "china": "CN", "japan": "JP",
+    "ukraine": "UA", "poland": "PL",
+    "romania": "RO", "hungary": "HU",
+    "czech": "CZ", "slovakia": "SK",
+    "bulgaria": "BG", "serbia": "RS",
+    "croatia": "HR", "georgia": "GE",
+    "azerbaijan": "AZ", "uzbekistan": "UZ",
+    "kyrgyzstan": "KG", "turkmenistan": "TM",
+    "mongolia": "MN", "belarus": "BY",
+    "estonia": "EE", "latvia": "LV",
+    "lithuania": "LT", "mexico": "MX",
+    "colombia": "CO", "peru": "PE",
+    "chile": "CL", "ecuador": "EC",
+    "paraguay": "PY", "uruguay": "UY",
+    "cuba": "CU", "jamaica": "JM",
+    "dominican": "DO", "guatemala": "GT",
+    "honduras": "HN", "nicaragua": "NI",
+    "costa rica": "CR", "panama": "PA",
+    "el salvador": "SV", "belize": "BZ",
+}
+
+COUNTRY_LANGUAGE_MAP = {
+    "VE": "Spanish", "CO": "Spanish", "MX": "Spanish", "AR": "Spanish",
+    "PE": "Spanish", "CL": "Spanish", "EC": "Spanish", "BO": "Spanish",
+    "PY": "Spanish", "UY": "Spanish", "CU": "Spanish", "DO": "Spanish",
+    "GT": "Spanish", "HN": "Spanish", "NI": "Spanish", "CR": "Spanish",
+    "PA": "Spanish", "SV": "Spanish", "BZ": "English",
+    "BR": "Portuguese", "PT": "Portuguese", "AO": "Portuguese",
+    "MZ": "Portuguese", "CV": "Portuguese", "GW": "Portuguese",
+    "FR": "French", "BE": "French", "SN": "French", "ML": "French",
+    "BF": "French", "NE": "French", "TG": "French", "BJ": "French",
+    "CI": "French", "CM": "French", "CF": "French", "CD": "French",
+    "CG": "French", "GA": "French", "GN": "French", "MG": "French",
+    "RW": "French", "HT": "French", "DJ": "French",
+    "DE": "German", "AT": "German", "CH": "German",
+    "RU": "Russian", "BY": "Russian", "KZ": "Russian",
+    "UA": "Ukrainian", "PL": "Polish", "RO": "Romanian",
+    "CN": "Chinese", "TW": "Chinese", "HK": "Chinese",
+    "JP": "Japanese", "KR": "Korean", "KP": "Korean",
+    "SA": "Arabic", "EG": "Arabic", "IQ": "Arabic", "SY": "Arabic",
+    "JO": "Arabic", "LB": "Arabic", "YE": "Arabic", "OM": "Arabic",
+    "AE": "Arabic", "KW": "Arabic", "BH": "Arabic", "QA": "Arabic",
+    "MA": "Arabic", "DZ": "Arabic", "TN": "Arabic", "LY": "Arabic",
+    "SD": "Arabic", "SO": "Arabic", "MR": "Arabic",
+    "IN": "Hindi", "NP": "Nepali", "BD": "Bengali",
+    "PK": "Urdu", "LK": "Sinhala", "MM": "Burmese",
+    "TH": "Thai", "VN": "Vietnamese", "KH": "Khmer",
+    "ID": "Indonesian", "MY": "Malay", "PH": "Filipino",
+    "TR": "Turkish", "AZ": "Azerbaijani", "UZ": "Uzbek",
+    "TM": "Turkmen", "KG": "Kyrgyz", "TJ": "Tajik",
+    "AM": "Armenian", "GE": "Georgian", "MN": "Mongolian",
+    "IR": "Persian", "AF": "Dari", "IL": "Hebrew",
+    "ET": "Amharic", "NG": "English", "GH": "English",
+    "KE": "English", "UG": "English", "TZ": "English",
+    "ZM": "English", "ZW": "English", "MW": "English",
+    "ZA": "English", "NA": "English", "BW": "English",
+    "LS": "English", "SL": "English", "LR": "English",
+    "GM": "English", "US": "English", "GB": "English",
+    "CA": "English", "AU": "English", "NZ": "English",
+    "JM": "English", "TT": "English",
 }
 
 def get_alpha2(country_name):
-    """দেশের নাম থেকে alpha2 code বের করো"""
     if not country_name:
         return None
     name_lower = country_name.lower().strip()
@@ -158,11 +204,15 @@ def get_flag(country_name):
     return "🌐"
 
 def get_short_code(country_name):
-    """#VE, #NG এর মতো short code"""
     alpha2 = get_alpha2(country_name)
     if alpha2:
         return f"#{alpha2.upper()}"
     return "#??"
+
+def get_language(alpha2):
+    if not alpha2:
+        return "English"
+    return COUNTRY_LANGUAGE_MAP.get(alpha2.upper(), "English")
 
 def get_country_from_number(number):
     try:
@@ -176,42 +226,51 @@ def get_country_from_number(number):
 # ===================== SERVICE DETECT =====================
 def detect_service(msg):
     msg_upper = msg.upper()
-    if any(k in msg_upper for k in ["FACEBOOK", "FB"]):   return "FACEBOOK"
-    if any(k in msg_upper for k in ["INSTAGRAM", "IG", "INSTA"]): return "INSTAGRAM"
-    if any(k in msg_upper for k in ["WHATSAPP", "WA"]):   return "WHATSAPP"
-    if "TELEGRAM" in msg_upper:                            return "TELEGRAM"
+    if any(k in msg_upper for k in ["FACEBOOK", "FB"]):
+        return "FACEBOOK"
+    if any(k in msg_upper for k in ["INSTAGRAM", "IG", "INSTA"]):
+        return "INSTAGRAM"
+    if any(k in msg_upper for k in ["WHATSAPP", "WA"]):
+        return "WHATSAPP"
+    if "TELEGRAM" in msg_upper:
+        return "TELEGRAM"
     return "OTP"
 
-# ===================== OTP EXTRACT =====================
+# ===================== OTP EXTRACT (সঠিক OTP বের করবে) =====================
 def extract_otp(message_text, phone_number=None):
+    """
+    Message থেকে সঠিক OTP বের করে।
+    ফোন নাম্বারের ডিজিট বাদ দিয়ে 4-8 ডিজিটের কোড খোঁজে।
+    """
     if not message_text:
         return None
+
     phone_digits = re.sub(r'\D', '', str(phone_number)) if phone_number else ""
 
-    spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
-    for match in spaced_matches:
+    # ধাপ ১: space দিয়ে আলাদা করা OTP (যেমন: 1 2 3 4 5 6)
+    spaced = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
+    for match in spaced:
         joined = match.replace(" ", "")
         if not joined.isdigit():
             continue
         if phone_digits and (joined in phone_digits or phone_digits in joined):
             continue
-        if 4 <= len(joined) <= 10:
+        if 4 <= len(joined) <= 8:
             return joined
 
-    candidates = re.findall(r'\b(\d{4,10})\b', message_text)
+    # ধাপ ২: সরাসরি 4-8 ডিজিটের নম্বর
+    candidates = re.findall(r'\b(\d{4,8})\b', message_text)
     for candidate in candidates:
         if phone_digits:
-            if candidate in phone_digits: continue
-            if phone_digits in candidate: continue
-            if phone_digits[-10:] in candidate: continue
-        if 4 <= len(candidate) <= 10:
+            if candidate in phone_digits:
+                continue
+            if phone_digits.endswith(candidate):
+                continue
+            if phone_digits[-8:] == candidate:
+                continue
+        if 4 <= len(candidate) <= 8:
             return candidate
 
-    all_digits = re.sub(r'\D', '', message_text)
-    if phone_digits:
-        all_digits = all_digits.replace(phone_digits, "")
-    if len(all_digits) >= 4:
-        return all_digits[-6:] if len(all_digits) >= 6 else all_digits
     return None
 
 # ===================== বট ১ — console API =====================
@@ -220,51 +279,67 @@ def get_country_info(number):
         clean_number = re.sub(r'\D', '', str(number))
         parsed_number = phonenumbers.parse("+" + clean_number, None)
         country_name = geocoder.country_name_for_number(parsed_number, "en")
-        flag = get_flag(country_name)
-        short = get_short_code(country_name)
-        return flag, short, country_name if country_name else "Unknown"
-    except:
-        return "🌐", "#??", "Unknown"
+        alpha2 = get_alpha2(country_name)
+        flag   = get_flag(country_name)
+        short  = get_short_code(country_name)
+        lang   = get_language(alpha2)
+        return flag, short, lang, country_name if country_name else "Unknown"
+    except Exception:
+        return "🌐", "#??", "English", "Unknown"
+
+def build_message(masked_number, flag, short_code, service, lang):
+    current_time = bd_time()
+    return (
+        f"┏━━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ ✦ {masked_number} ✦   ┃\n"
+        f"┣━━━━━━━━━━━━━━━━━━┫\n"
+        f"┃ {flag} {short_code} • 👉 {service}┃\n"
+        f"┣━━━━━━━━━━━━━━━━━━┫\n"
+        f"┃ ⏰ {current_time} • #{lang} ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━━┛"
+    )
+
+RANGE_CHANNEL_URL = "https://t.me/range_channele"
+PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
+
+def build_markup_bot1(otp_code, range_clean):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(
+        text=f"🎀 {otp_code}",
+        copy_text=types.CopyTextButton(text=otp_code)
+    ))
+    markup.add(types.InlineKeyboardButton(
+        text="▰ RANGE COPY ▰",
+        copy_text=types.CopyTextButton(text=range_clean)
+    ))
+    markup.row(
+        types.InlineKeyboardButton("🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("📲 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+    )
+    return markup
 
 def send_styled_otp(hit):
     otp_full    = hit.get("message", "")
     full_number = str(hit.get("range", ""))
 
-    flag, short_code, country = get_country_info(full_number)
+    flag, short_code, lang, country = get_country_info(full_number)
+    range_clean = re.sub(r'[Xx]', '', full_number)
 
-    range_clean   = re.sub(r'[Xx]', '', full_number)
-    random_digits = ''.join([str(random.randint(0, 9)) for _ in range(4)])
-    masked_number = f"{full_number[:4]}★★{random_digits}"
-
-    otp_match = re.search(r'\b\d{5,8}\b', otp_full)
-    otp_code  = otp_match.group() if otp_match else ''.join(filter(str.isdigit, otp_full))[:8]
-
-    service      = detect_service(otp_full)
-    current_time = time.strftime("%H:%M")
-
-    # mask number with hearts
     if len(range_clean) >= 8:
-        masked_heart = range_clean[:4] + "♡♡♡" + range_clean[-4:]
+        masked_number = range_clean[:4] + "★★" + range_clean[-4:]
     else:
-        masked_heart = range_clean
+        masked_number = range_clean
 
-    text = (
-        f"{flag} {short_code} 💬 {masked_number} 📩\n"
-        f"📞 +{masked_heart} #English\n"
-        f"✨ STAY WITH OTP SERVICE"
-    )
+    # সঠিক OTP বের করো
+    otp_code = extract_otp(otp_full, full_number)
+    if not otp_code:
+        # fallback: regex দিয়ে 5-8 ডিজিটের প্রথম কোড
+        m = re.search(r'\b\d{5,8}\b', otp_full)
+        otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
 
-    markup = types.InlineKeyboardMarkup()
-    # row 1: copy বাটন → সবুজ
-    markup.row(types.InlineKeyboardButton(
-        text=f"🔒  {otp_code}",
-        copy_text=types.CopyTextButton(text=otp_code)
-    ))
-    # row 2: url বাটন → নীল + লাল
-    markup.row(
-        types.InlineKeyboardButton("📞 Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("📁 Method", url=RANGE_CHANNEL_URL)
-    )
+    service = detect_service(otp_full)
+    text    = build_message(masked_number, flag, short_code, service, lang)
+    markup  = build_markup_bot1(otp_code, range_clean)
 
     try:
         msg = bot1.send_message(CHANNEL_ID, text, reply_markup=markup)
@@ -294,51 +369,55 @@ def run_bot1():
         time.sleep(10)
 
 # ===================== বট ২ — success-otp API =====================
+def build_markup_bot2(otp_code, clean_num):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(
+        text=f"🎀 {otp_code}",
+        copy_text=types.CopyTextButton(text=otp_code)
+    ))
+    markup.add(types.InlineKeyboardButton(
+        text="▰ RANGE COPY ▰",
+        copy_text=types.CopyTextButton(text=clean_num)
+    ))
+    markup.row(
+        types.InlineKeyboardButton("🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("📲 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+    )
+    return markup
+
 def send_to_channel_bot2(item):
     otp_msg     = item.get("message", "")
     full_number = str(item.get("number", ""))
     clean_num   = re.sub(r'\D', '', full_number)
 
+    # দেশ তথ্য ফোন নাম্বার থেকে
     country_name = get_country_from_number(full_number)
+    alpha2       = get_alpha2(country_name)
     flag         = get_flag(country_name)
     short_code   = get_short_code(country_name)
+    lang         = get_language(alpha2)
 
-    otp_code = extract_otp(otp_msg, full_number)
-    if not otp_code:
-        otp_code = re.sub(r'\D', '', otp_msg)[-6:] or "------"
-
-    service = detect_service(otp_msg)
-
+    # masked নাম্বার
     if len(clean_num) >= 8:
         masked = clean_num[:4] + "★★" + clean_num[-4:]
     else:
         masked = clean_num
 
-    current_time = time.strftime("%H:%M")
+    # সঠিক OTP বের করো
+    otp_code = extract_otp(otp_msg, full_number)
+    if not otp_code:
+        m = re.search(r'\b\d{4,8}\b', otp_msg)
+        if m:
+            otp_code = m.group()
+        else:
+            digits = re.sub(r'\D', '', otp_msg)
+            # ফোন নাম্বারের ডিজিট বাদ দাও
+            digits = digits.replace(clean_num, "").replace(clean_num[-8:], "")
+            otp_code = digits[:8] if digits else "------"
 
-    # mask number with hearts
-    if len(clean_num) >= 8:
-        masked_heart = clean_num[:4] + "♡♡♡" + clean_num[-4:]
-    else:
-        masked_heart = clean_num
-
-    text = (
-        f"{flag} {short_code} 💬 {service}\n"
-        f"📞 +{masked_heart} #English\n"
-        f"✨ STAY WITH OTP SERVICE"
-    )
-
-    markup = types.InlineKeyboardMarkup()
-    # row 1: copy বাটন → সবুজ
-    markup.row(types.InlineKeyboardButton(
-        text=f"🔒  {otp_code}",
-        copy_text=types.CopyTextButton(text=otp_code)
-    ))
-    # row 2: url বাটন → নীল + লাল
-    markup.row(
-        types.InlineKeyboardButton("📞 Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("📁 Method", url=RANGE_CHANNEL_URL)
-    )
+    service = detect_service(otp_msg)
+    text    = build_message(masked, flag, short_code, service, lang)
+    markup  = build_markup_bot2(otp_code, clean_num)
 
     try:
         msg = bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
@@ -350,28 +429,27 @@ def send_to_channel_bot2(item):
         print(f"[BOT-2 Send Error] {e}")
 
 def run_bot2():
+    """
+    success-otp API থেকে OTP নিয়ে channel-এ পাঠাবে।
+    প্রতি ২ সেকেন্ডে চেক করবে।
+    """
     print("🚀 BOT-2 (success-otp) started...")
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
     while True:
         try:
-            r    = requests.get(SUCCESS_OTP_URL, headers=HEADERS, timeout=10)
+            r    = session.get(SUCCESS_OTP_URL, timeout=10)
             data = r.json()
-            # code==200 বা status=="ok" যেকোনোটা
-            meta = data.get("meta", {})
-            ok   = (meta.get("code") == 200 or meta.get("status") == "ok")
-            if ok:
-                d    = data.get("data", {})
-                otps = d.get("otps") or d.get("hits") or d.get("messages") or []
-                if isinstance(d, list):
-                    otps = d
+            if data.get("meta", {}).get("code") == 200:
+                otps = data.get("data", {}).get("otps", [])
                 for item in otps:
-                    msg_id = str(item.get("id") or item.get("time") or "")
+                    msg_id = str(item.get("id", ""))
                     if msg_id and msg_id not in sent_otp_ids:
                         sent_otp_ids.add(msg_id)
                         save_sent_id(msg_id)
                         send_to_channel_bot2(item)
-                        time.sleep(1.5)
-            else:
-                print(f"[BOT-2] API: {data}")
+                        time.sleep(1)
         except Exception as e:
             print(f"[BOT-2 Error] {e}")
         time.sleep(2)
