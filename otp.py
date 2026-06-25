@@ -318,35 +318,41 @@ def build_markup_bot1(otp_code, range_clean):
     )
     return markup
 
+def fill_xxx(number_str):
+    """
+    লাস্টের XXX গুলো র‍্যান্ডম ডিজিট দিয়ে বদলাবে।
+    display সবসময়: প্রথম ৪ ডিজিট + ★★ + শেষ ৪ ডিজিট
+    RANGE COPY বাটনে যাবে পুরো নাম্বার (random filled)
+    """
+    def replace_x(match):
+        return ''.join([str(random.randint(0, 9)) for _ in match.group()])
+    filled = re.sub(r'[Xx]+', replace_x, number_str)
+    return re.sub(r'\D', '', filled)
+
 def send_styled_otp(hit):
     otp_full    = hit.get("message", "")
     full_number = str(hit.get("range", ""))
 
     flag, short_code, lang, country = get_country_info(full_number)
-    range_clean = re.sub(r'[Xx]', '', full_number)
 
-    if len(range_clean) >= 8:
-        masked_number = range_clean[:4] + "★★" + range_clean[-4:]
-    else:
-        masked_number = range_clean
+    # XXX বাদ দিয়ে real digits (RANGE COPY তে যাবে)
+    real_num      = re.sub(r'[Xx]', '', full_number)   # XXX বাদ, real digits
+    real_digits   = re.sub(r'\D', '', real_num)
+    filled_num    = fill_xxx(full_number)                 # display এর জন্য XXX filled
+    display_masked = filled_num[:4] + "★★" + filled_num[-4:]
 
     # সঠিক OTP বের করো
     otp_code = extract_otp(otp_full, full_number)
     if not otp_code:
-        # fallback: regex দিয়ে 5-8 ডিজিটের প্রথম কোড
         m = re.search(r'\b\d{5,8}\b', otp_full)
         otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
 
     service = detect_service(otp_full)
-    text    = build_message(masked_number, flag, short_code, service, lang)
-    markup  = build_markup_bot1(otp_code, range_clean)
+    text    = build_message(display_masked, flag, short_code, service, lang)
+    markup  = build_markup_bot1(otp_code, real_digits)
 
     try:
-        msg = bot1.send_message(CHANNEL_ID, text, reply_markup=markup)
-        threading.Thread(
-            target=lambda: (time.sleep(90), bot1.delete_message(CHANNEL_ID, msg.message_id)),
-            daemon=True
-        ).start()
+        bot1.send_message(CHANNEL_ID, text, reply_markup=markup)
     except Exception as e:
         print(f"[BOT-1 Send Error] {e}")
 
@@ -397,11 +403,10 @@ def send_to_channel_bot2(item):
     short_code   = get_short_code(country_name)
     lang         = get_language(alpha2)
 
-    # masked নাম্বার
-    if len(clean_num) >= 8:
-        masked = clean_num[:4] + "★★" + clean_num[-4:]
-    else:
-        masked = clean_num
+    # XXX বাদ দিয়ে real digits (RANGE COPY তে যাবে)
+    real_digits    = re.sub(r'\D', '', re.sub(r'[Xx]', '', full_number))
+    filled_num     = fill_xxx(full_number)
+    display_masked = filled_num[:4] + "★★" + filled_num[-4:]
 
     # সঠিক OTP বের করো
     otp_code = extract_otp(otp_msg, full_number)
@@ -411,20 +416,15 @@ def send_to_channel_bot2(item):
             otp_code = m.group()
         else:
             digits = re.sub(r'\D', '', otp_msg)
-            # ফোন নাম্বারের ডিজিট বাদ দাও
             digits = digits.replace(clean_num, "").replace(clean_num[-8:], "")
             otp_code = digits[:8] if digits else "------"
 
     service = detect_service(otp_msg)
-    text    = build_message(masked, flag, short_code, service, lang)
-    markup  = build_markup_bot2(otp_code, clean_num)
+    text    = build_message(display_masked, flag, short_code, service, lang)
+    markup  = build_markup_bot2(otp_code, real_digits)
 
     try:
-        msg = bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
-        threading.Thread(
-            target=lambda: (time.sleep(90), bot2.delete_message(CHANNEL_ID, msg.message_id)),
-            daemon=True
-        ).start()
+        bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
     except Exception as e:
         print(f"[BOT-2 Send Error] {e}")
 
