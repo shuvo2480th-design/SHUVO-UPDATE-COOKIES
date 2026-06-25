@@ -33,13 +33,14 @@ def keep_alive():
     t.start()
 
 # ===================== কনফিগারেশন =====================
-API_KEY      = os.environ.get("API_KEY", "")
-BOT_TOKEN    = os.environ.get("BOT_TOKEN", "")
+API_KEY      = "MUBTR1MKUBO"
+BOT_TOKEN    = "8510677584:AAGgqHJp_PqKTpvoUltLZSSGiRPIaQCvMgY"
 BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS      = {"mauthapi": API_KEY}
-ADMIN_ID     = os.environ.get("ADMIN_ID", "")
+ADMIN_ID     = "6136815573"
 GROUP_URL    = "https://t.me/tem_withh"
-FIREBASE_URL = os.environ.get("FIREBASE_URL", "")
+FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
+
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
 
 # ===== ৪টি হার্ডকোড সার্ভিস বাটন (কোনোভাবেই পরিবর্তন হবে না) =====
