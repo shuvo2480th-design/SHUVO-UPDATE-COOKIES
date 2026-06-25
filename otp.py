@@ -255,18 +255,16 @@ def send_styled_otp(hit):
     )
 
     markup = types.InlineKeyboardMarkup()
+    # row 1: copy বাটন → সবুজ
     markup.row(types.InlineKeyboardButton(
-        text=f"🔒 {otp_code}",
+        text=f"🔒  {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
+    # row 2: url বাটন → নীল + লাল
     markup.row(
-        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("📞 Panel", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("📁 Method", url=RANGE_CHANNEL_URL)
     )
-    markup.row(types.InlineKeyboardButton(
-        text="Full Message",
-        copy_text=types.CopyTextButton(text=otp_full)
-    ))
 
     try:
         msg = bot1.send_message(CHANNEL_ID, text, reply_markup=markup)
@@ -331,18 +329,16 @@ def send_to_channel_bot2(item):
     )
 
     markup = types.InlineKeyboardMarkup()
+    # row 1: copy বাটন → সবুজ
     markup.row(types.InlineKeyboardButton(
-        text=f"🔒 {otp_code}",
+        text=f"🔒  {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
+    # row 2: url বাটন → নীল + লাল
     markup.row(
-        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("📞 Panel", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("📁 Method", url=RANGE_CHANNEL_URL)
     )
-    markup.row(types.InlineKeyboardButton(
-        text="Full Message",
-        copy_text=types.CopyTextButton(text=otp_msg)
-    ))
 
     try:
         msg = bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
