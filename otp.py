@@ -254,7 +254,7 @@ def send_styled_otp(hit):
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"🟢  {otp_code}  🟢",
+        text=f"✅  {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
     markup.row(types.InlineKeyboardButton(
@@ -262,8 +262,8 @@ def send_styled_otp(hit):
         copy_text=types.CopyTextButton(text=range_clean)
     ))
     markup.row(
-        types.InlineKeyboardButton("🔵 Panel 🔵", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("🔵 Method 🔵", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
     )
 
     try:
@@ -328,7 +328,7 @@ def send_to_channel_bot2(item):
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"🟢  {otp_code}  🟢",
+        text=f"✅  {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
     markup.row(types.InlineKeyboardButton(
@@ -336,8 +336,8 @@ def send_to_channel_bot2(item):
         copy_text=types.CopyTextButton(text=clean_num)
     ))
     markup.row(
-        types.InlineKeyboardButton("🔵 Panel 🔵", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("🔵 Method 🔵", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
     )
 
     try:
