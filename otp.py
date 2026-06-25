@@ -46,7 +46,22 @@ bot2 = telebot.TeleBot(BOT_TOKEN_2)
 bot1.remove_webhook()
 bot2.remove_webhook()
 
-sent_otp_ids = set()
+# sent_otp_ids — restart এও পুরনো OTP মনে থাকবে
+SENT_OTP_FILE = "sent_otp_ids.pkl"
+def load_sent_ids():
+    if os.path.exists(SENT_OTP_FILE):
+        try:
+            return pickle.load(open(SENT_OTP_FILE, "rb"))
+        except:
+            pass
+    return set()
+
+def save_sent_id(msg_id):
+    ids = load_sent_ids()
+    ids.add(msg_id)
+    pickle.dump(ids, open(SENT_OTP_FILE, "wb"))
+
+sent_otp_ids = load_sent_ids()
 
 # ===================== পতাকা + দেশের short code =====================
 COUNTRY_NAME_MAP = {
@@ -239,7 +254,7 @@ def send_styled_otp(hit):
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"📋  {otp_code}",
+        text=f"🟢  {otp_code}  🟢",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
     markup.row(types.InlineKeyboardButton(
@@ -247,8 +262,8 @@ def send_styled_otp(hit):
         copy_text=types.CopyTextButton(text=range_clean)
     ))
     markup.row(
-        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("🔵 Panel 🔵", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("🔵 Method 🔵", url=RANGE_CHANNEL_URL)
     )
 
     try:
@@ -313,7 +328,7 @@ def send_to_channel_bot2(item):
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"📋  {otp_code}",
+        text=f"🟢  {otp_code}  🟢",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
     markup.row(types.InlineKeyboardButton(
@@ -321,8 +336,8 @@ def send_to_channel_bot2(item):
         copy_text=types.CopyTextButton(text=clean_num)
     ))
     markup.row(
-        types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("🔵 Panel 🔵", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("🔵 Method 🔵", url=RANGE_CHANNEL_URL)
     )
 
     try:
@@ -352,6 +367,7 @@ def run_bot2():
                     msg_id = str(item.get("id") or item.get("time") or "")
                     if msg_id and msg_id not in sent_otp_ids:
                         sent_otp_ids.add(msg_id)
+                        save_sent_id(msg_id)
                         send_to_channel_bot2(item)
                         time.sleep(1.5)
             else:
