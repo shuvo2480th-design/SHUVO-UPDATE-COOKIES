@@ -242,29 +242,31 @@ def send_styled_otp(hit):
     service      = detect_service(otp_full)
     current_time = time.strftime("%H:%M")
 
+    # mask number with hearts
+    if len(range_clean) >= 8:
+        masked_heart = range_clean[:4] + "♡♡♡" + range_clean[-4:]
+    else:
+        masked_heart = range_clean
+
     text = (
-        f"┏━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ ✦ {masked_number} ✦   ┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ {flag} {short_code} • 👉 {service}┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ ⏰ {current_time} • #English ┃\n"
-        f"┗━━━━━━━━━━━━━━━━━━┛"
+        f"{flag} {short_code} 💬 {masked_number} 📩\n"
+        f"📞 +{masked_heart} #English\n"
+        f"✨ STAY WITH OTP SERVICE"
     )
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"✅  {otp_code}",
+        text=f"🔒 {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
-    ))
-    markup.row(types.InlineKeyboardButton(
-        text="▰ RANGE COPY ▰",
-        copy_text=types.CopyTextButton(text=range_clean)
     ))
     markup.row(
         types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
         types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
     )
+    markup.row(types.InlineKeyboardButton(
+        text="Full Message",
+        copy_text=types.CopyTextButton(text=otp_full)
+    ))
 
     try:
         msg = bot1.send_message(CHANNEL_ID, text, reply_markup=markup)
@@ -316,29 +318,31 @@ def send_to_channel_bot2(item):
 
     current_time = time.strftime("%H:%M")
 
+    # mask number with hearts
+    if len(clean_num) >= 8:
+        masked_heart = clean_num[:4] + "♡♡♡" + clean_num[-4:]
+    else:
+        masked_heart = clean_num
+
     text = (
-        f"┏━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ ✦ {masked} ✦   ┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ {flag} {short_code} • 👉 {service}┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ ⏰ {current_time} • #English ┃\n"
-        f"┗━━━━━━━━━━━━━━━━━━┛"
+        f"{flag} {short_code} 💬 {service}\n"
+        f"📞 +{masked_heart} #English\n"
+        f"✨ STAY WITH OTP SERVICE"
     )
 
     markup = types.InlineKeyboardMarkup()
     markup.row(types.InlineKeyboardButton(
-        text=f"✅  {otp_code}",
+        text=f"🔒 {otp_code}",
         copy_text=types.CopyTextButton(text=otp_code)
-    ))
-    markup.row(types.InlineKeyboardButton(
-        text="▰ RANGE COPY ▰",
-        copy_text=types.CopyTextButton(text=clean_num)
     ))
     markup.row(
         types.InlineKeyboardButton("Panel", url=PANEL_BOT_URL),
         types.InlineKeyboardButton("Method", url=RANGE_CHANNEL_URL)
     )
+    markup.row(types.InlineKeyboardButton(
+        text="Full Message",
+        copy_text=types.CopyTextButton(text=otp_msg)
+    ))
 
     try:
         msg = bot2.send_message(CHANNEL_ID, text, reply_markup=markup)
