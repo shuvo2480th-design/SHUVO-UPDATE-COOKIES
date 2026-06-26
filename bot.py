@@ -71,6 +71,7 @@ used_otps      = {}
 otp_running    = {}
 strd_running   = {}
 withdraw_data  = {}
+withdraw_status = {}  # uid -> {"status": "pending"/"approved"/"rejected", "amount": ..., "method": ..., "number": ...}
 
 service_countries = {s: [] for s in FIXED_SERVICES}
 
@@ -560,11 +561,11 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
 
                             text = (
                                 "╔════════════════════╗\n"
-                                f"    ➤ {current_num} ➤ RCVED ✅\n"
-                                "╚════════════════════╝\n"
-                                "💰 Balance Added: +0.15 TK\n"
-                                f"🏦 Total Balance: {new_bal:.2f} TK"
-                            )
+                                f"    ➤ 𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿 ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                                "╚════════════════════╝\n\n"
+                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.15 𝚃𝙺\n\n"
+                                f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
+                            ).replace("𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿", current_num)
                             kb = types.InlineKeyboardMarkup()
                             kb.add(types.InlineKeyboardButton(
                                 text=otp, copy_text=types.CopyTextButton(text=otp)
@@ -621,10 +622,10 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
 
                             text = (
                                 "╔════════════════════╗\n"
-                                f"    ➤ {phone_number} ➤ RCVED ✅\n"
-                                "╚════════════════════╝\n"
-                                "💰 Balance Added: +0.15 TK\n"
-                                f"🏦 Total Balance: {new_bal:.2f} TK"
+                                f"    ➤ {phone_number} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                                "╚════════════════════╝\n\n"
+                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.15 𝚃𝙺\n\n"
+                                f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
                             )
                             kb = types.InlineKeyboardMarkup()
                             kb.add(types.InlineKeyboardButton(
@@ -793,11 +794,17 @@ def handle_text(message):
         markup.add(types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"))
         msg_text = (
             "╔════════════════════╗\n"
-            "      👤 USER PROFILE\n"
-            "╚════════════════════╝\n\n"
-            f"🆔 ID : {uid}\n"
-            f"💰 BALANCE : {balance:.2f} TK\n\n"
-            "✅ STATUS : ACTIVE"
+            "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"🆔 𝙸𝙳 : {uid}\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} TK\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            "✅ 𝚂𝚃𝙰𝚃𝚄𝚂 : ACTIVE\n"
+            "╚════════════════════╝"
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=markup)
 
@@ -955,15 +962,137 @@ def handle_query(call):
         msg = bot.send_message(cid, f"📱 ENTER YOUR {call.data.upper()} NUMBER")
         bot.register_next_step_handler(msg, get_withdraw_number)
 
+    elif call.data == "withdraw_status":
+        uid_str = str(uid)
+        status_info = withdraw_status.get(uid_str)
+        if not status_info:
+            bot.answer_callback_query(call.id, "❌ কোনো withdraw request নেই।")
+            return
+        st = status_info.get("status", "pending")
+        amount = status_info.get("amount", 0)
+        method = status_info.get("method", "")
+        number = status_info.get("number", "")
+        if st == "pending":
+            status_text = (
+                "╔════════════════════╗\n"
+                "⏳ 𝚈𝙾𝚄𝚁 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙸𝚂 𝙿𝙴𝙽𝙳𝙸𝙽𝙶\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"👤 𝙸𝙳 : {uid_str}\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"📱 {method.upper()} : {number}\n"
+                "╚════════════════════╝\n"
+                "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚚𝚞𝚎𝚜𝚝"
+            )
+        elif st == "approved":
+            status_text = (
+                "╔════════════════════╗\n"
+                "✅ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚂𝚄𝙲𝙲𝙴𝚂𝚂!\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"👤 𝙸𝙳 : {uid_str}\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"📱 {method.upper()} : {number}\n"
+                "╚════════════════════╝"
+            )
+        else:  # rejected
+            status_text = (
+                "╔════════════════════╗\n"
+                "❌ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝙹𝙴𝙲𝚃𝙴𝙳\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"👤 𝙸𝙳 : {uid_str}\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"📱 {method.upper()} : {number}\n"
+                "╚════════════════════╝"
+            )
+        bot.answer_callback_query(call.id)
+        bot.send_message(cid, status_text)
+
     elif call.data.startswith("approve_"):
+        if str(uid) != ADMIN_ID:
+            bot.answer_callback_query(call.id, "❌ Admin only!")
+            return
         target_uid = call.data.split("_")[1]
-        amount     = withdraw_data.get(int(target_uid), {}).get("amount", 0)
+        w = withdraw_data.get(int(target_uid), {})
+        amount = w.get("amount", 0)
+        method = w.get("method", "")
+        number = w.get("number", "")
         update_firebase_balance(target_uid, -amount)
+        # status আপডেট
+        withdraw_status[target_uid] = {
+            "status": "approved",
+            "amount": amount,
+            "method": method,
+            "number": number
+        }
         try:
-            bot.send_message(target_uid, "✅ PAYMENT SUCCESS!")
+            approved_text = (
+                "╔════════════════════╗\n"
+                "✅ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚂𝚄𝙲𝙲𝙴𝚂𝚂!\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"👤 𝙸𝙳 : {target_uid}\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"📱 {method.upper()} : {number}\n"
+                "╚════════════════════╝"
+            )
+            bot.send_message(target_uid, approved_text)
         except Exception:
             pass
         bot.edit_message_text("✅ Approved", cid, call.message.message_id)
+
+    elif call.data.startswith("reject_"):
+        if str(uid) != ADMIN_ID:
+            bot.answer_callback_query(call.id, "❌ Admin only!")
+            return
+        target_uid = call.data.split("_")[1]
+        w = withdraw_data.get(int(target_uid), {})
+        amount = w.get("amount", 0)
+        method = w.get("method", "")
+        number = w.get("number", "")
+        # status আপডেট
+        withdraw_status[target_uid] = {
+            "status": "rejected",
+            "amount": amount,
+            "method": method,
+            "number": number
+        }
+        try:
+            rejected_text = (
+                "╔════════════════════╗\n"
+                "❌ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝙹𝙴𝙲𝚃𝙴𝙳\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"👤 𝙸𝙳 : {target_uid}\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+                "╚════════════════════╝\n"
+                "╔════════════════════╗\n"
+                f"📱 {method.upper()} : {number}\n"
+                "╚════════════════════╝"
+            )
+            bot.send_message(target_uid, rejected_text)
+        except Exception:
+            pass
+        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
 
 # ===================== WITHDRAW =====================
 def get_withdraw_number(message):
@@ -979,16 +1108,59 @@ def get_withdraw_amount(message):
             return
         uid = message.from_user.id
         withdraw_data[uid]["amount"] = amount
-        admin_text = (
-            f"💸 NEW PAYMENT REQUEST\n"
-            f"👤 ID : {uid}\n"
-            f"💰 AMOUNT : {amount} TK\n"
-            f"📱 {withdraw_data[uid]['method']} : {withdraw_data[uid]['number']}"
+        method = withdraw_data[uid]['method']
+        number = withdraw_data[uid]['number']
+
+        # withdraw status pending সেট করো
+        withdraw_status[str(uid)] = {
+            "status": "pending",
+            "amount": amount,
+            "method": method,
+            "number": number
+        }
+
+        # ইউজারকে pending মেসেজ পাঠাও
+        user_text = (
+            "╔════════════════════╗\n"
+            "⏳ 𝚈𝙾𝚄𝚁 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙸𝚂 𝙿𝙴𝙽𝙳𝙸𝙽𝙶\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"👤 𝙸𝙳 : {uid}\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"📱 {method.upper()} : {number}\n"
+            "╚════════════════════╝\n"
+            "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚚𝚞𝚎𝚜𝚝"
         )
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{uid}"))
+        user_kb = types.InlineKeyboardMarkup()
+        user_kb.add(types.InlineKeyboardButton("𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆 𝚂𝚃𝙰𝚃𝚄𝚂", callback_data="withdraw_status"))
+        bot.send_message(message.chat.id, user_text, reply_markup=user_kb)
+
+        # এডমিনকে মেসেজ পাঠাও
+        admin_text = (
+            "╔════════════════════╗\n"
+            "💸 𝙽𝙴𝚆 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝚀𝚄𝙴𝚂𝚃\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"👤 𝙸𝙳 : {uid}\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"📱 {method.upper()} : {number}\n"
+            "╚════════════════════╝"
+        )
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.row(
+            types.InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{uid}"),
+            types.InlineKeyboardButton("❌ REJECT",  callback_data=f"reject_{uid}")
+        )
         bot.send_message(ADMIN_ID, admin_text, reply_markup=markup)
-        bot.send_message(message.chat.id, "✅ SUBMITTED!")
+
     except Exception:
         bot.send_message(message.chat.id, "❌ Error! সংখ্যা দিন।")
 
