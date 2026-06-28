@@ -484,8 +484,18 @@ def del_service(message):
         else:
             bot.reply_to(message, "❌ সার্ভিসটি পাওয়া যায়নি।")
 
-@bot.message_handler(commands=['addmoney'])
-def add_money_by_admin(message):
+@bot.message_handler(commands=['price'])
+def price_command(message):
+    price_text = (
+        "💎 𝚂𝚃𝙰𝚃𝚄𝚂 💎\n\n"
+        "📲 𝚃𝙾𝙳𝙰𝚈 𝙾𝚃𝙿 𝙿𝚁𝙸𝙲𝙴 💰 𝟶.𝟼𝟶৳ 🔥\n\n"
+        "✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
+    )
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+    bot.send_message(message.chat.id, price_text, reply_markup=kb)
+
+
     if str(message.from_user.id) != ADMIN_ID:
         return
     parts = message.text.split()
@@ -556,14 +566,14 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                             if not otp:
                                 continue
 
-                            new_bal = update_firebase_balance(chat_id, 0.15)
+                            new_bal = update_firebase_balance(chat_id, 0.60)
                             received_otps[chat_id] = otp
 
                             text = (
                                 "╔════════════════════╗\n"
                                 f"    ➤ 𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿 ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
                                 "╚════════════════════╝\n\n"
-                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.15 𝚃𝙺\n\n"
+                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.60 𝚃𝙺\n\n"
                                 f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
                             ).replace("𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿", current_num)
                             kb = types.InlineKeyboardMarkup()
@@ -617,14 +627,14 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                             if not otp:
                                 continue
 
-                            new_bal = update_firebase_balance(chat_id, 0.15)
+                            new_bal = update_firebase_balance(chat_id, 0.60)
                             received_otps[chat_id] = otp
 
                             text = (
                                 "╔════════════════════╗\n"
                                 f"    ➤ {phone_number} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
                                 "╚════════════════════╝\n\n"
-                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.15 𝚃𝙺\n\n"
+                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.60 𝚃𝙺\n\n"
                                 f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
                             )
                             kb = types.InlineKeyboardMarkup()
@@ -791,7 +801,11 @@ def handle_text(message):
         uid     = str(message.from_user.id)
         balance = get_firebase_balance(uid)
         markup  = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"))
+        markup.row(
+            types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"),
+            types.InlineKeyboardButton("💰OTP PRICE CHECK", callback_data="otp_price")
+        )
+        markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
         msg_text = (
             "╔════════════════════╗\n"
             "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
@@ -941,6 +955,47 @@ def handle_query(call):
                 args=(cid, user_num, search_msg.message_id),
                 daemon=True
             ).start()
+
+    elif call.data == "otp_price":
+        price_text = (
+            "💎 𝚂𝚃𝙰𝚃𝚄𝚂 💎\n\n"
+            "📲 𝚃𝙾𝙳𝙰𝚈 𝙾𝚃𝙿 𝙿𝚁𝙸𝙲𝙴 💰 𝟶.𝟼𝟶৳ 🔥\n\n"
+            "✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+        try:
+            bot.edit_message_text(price_text, cid, call.message.message_id, reply_markup=kb)
+        except Exception:
+            bot.send_message(cid, price_text, reply_markup=kb)
+
+    elif call.data == "back_profile":
+        uid_str = str(uid)
+        balance = get_firebase_balance(uid_str)
+        markup  = types.InlineKeyboardMarkup()
+        markup.row(
+            types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"),
+            types.InlineKeyboardButton("💰OTP PRICE CHECK", callback_data="otp_price")
+        )
+        markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+        msg_text = (
+            "╔════════════════════╗\n"
+            "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"🆔 𝙸𝙳 : {uid_str}\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} TK\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            "✅ 𝚂𝚃𝙰𝚃𝚄𝚂 : ACTIVE\n"
+            "╚════════════════════╝"
+        )
+        try:
+            bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=markup)
+        except Exception:
+            bot.send_message(cid, msg_text, reply_markup=markup)
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
