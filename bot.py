@@ -532,17 +532,16 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                 data = r.json()
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
-                        msg_id = item.get("id")
-                        if (
-                            clean_number(item.get("number", "")) in clean_number(current_num)
-                            and msg_id not in used_otps.get(chat_id, [])
-                        ):
+                        msg_id = item.get("otp_id") or item.get("id")
+                        api_num2 = clean_number(item.get("number", ""))
+                        cur_num2 = clean_number(current_num)
+                        if (api_num2 in cur_num2 or cur_num2 in api_num2) and msg_id not in used_otps.get(chat_id, []):
                             if chat_id not in used_otps:
                                 used_otps[chat_id] = []
                             used_otps[chat_id].append(msg_id)
 
                             otp = extract_otp(item.get("message", ""), current_num)
-                            if not otp:
+                            if otp is None:
                                 continue
 
                             new_bal = update_firebase_balance(chat_id, 0.60)
@@ -601,10 +600,12 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                 data = r.json()
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
-                        msg_id = item.get("id")
+                        msg_id = item.get("otp_id") or item.get("id")
 
                         # এই নাম্বারের OTP কিনা চেক
-                        if clean_number(item.get("number", "")) not in clean_number(phone_number):
+                        api_num = clean_number(item.get("number", ""))
+                        my_num = clean_number(phone_number)
+                        if api_num not in my_num and my_num not in api_num:
                             continue
 
                         # আগে পাঠানো হয়েছে কিনা চেক
@@ -615,7 +616,7 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                         used_otps[chat_id].append(msg_id)
 
                         otp = extract_otp(item.get("message", ""), phone_number)
-                        if not otp:
+                        if otp is None:
                             continue
 
                         new_bal = update_firebase_balance(chat_id, 0.60)
