@@ -702,11 +702,9 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                     text=f"+{full_num}",
                     copy_text=types.CopyTextButton(text=f"+{full_num}")
                 ))
-                kb.row(
-                    types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"),
-                    types.InlineKeyboardButton("🔍 OTP SEARCH",  callback_data="otp_search")
-                )
+                kb.add(types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"))
                 kb.add(types.InlineKeyboardButton("🔐 OTP GROUP", url=GROUP_URL))
+                kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
 
                 msg_text = (
                     "✅ Number Assigned !\n"
@@ -980,8 +978,8 @@ def handle_query(call):
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
-        if balance < 20:
-            bot.answer_callback_query(call.id, "❌ Min 20 TK!")
+        if balance < 50:
+            bot.answer_callback_query(call.id, "❌ Min 50 TK!")
             return
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -1137,8 +1135,8 @@ def get_withdraw_number(message):
 def get_withdraw_amount(message):
     try:
         amount = int(message.text)
-        if amount < 20:
-            bot.send_message(message.chat.id, "❌ Minimum 20 TK!")
+        if amount < 50:
+            bot.send_message(message.chat.id, "❌ Minimum 50 TK!")
             return
         uid = message.from_user.id
         withdraw_data[uid]["amount"] = amount
