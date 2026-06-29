@@ -73,6 +73,9 @@ strd_running    = {}
 withdraw_data   = {}
 withdraw_status = {}
 
+# ✅ নতুন: GLOBAL used OTP tracker - কখনই রিসেট হয় না
+global_used_otps = {}
+
 service_countries = {s: [] for s in FIXED_SERVICES}
 
 # ===================== FIREBASE =====================
@@ -536,10 +539,19 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                         msg_id   = item.get("otp_id") or item.get("id")
                         api_num2 = clean_number(item.get("number", ""))
                         cur_num2 = clean_number(current_num)
+                        
+                        # ✅ গ্লোবাল লিস্টেও চেক করুন
+                        if msg_id in global_used_otps.get(chat_id, set()):
+                            continue
+                        
                         if (api_num2 in cur_num2 or cur_num2 in api_num2) and msg_id not in used_otps.get(chat_id, []):
                             if chat_id not in used_otps:
                                 used_otps[chat_id] = []
+                            if chat_id not in global_used_otps:
+                                global_used_otps[chat_id] = set()
+                            
                             used_otps[chat_id].append(msg_id)
+                            global_used_otps[chat_id].add(msg_id)  # ✅ গ্লোবালে যোগ করুন
 
                             otp = extract_otp(item.get("message", ""), current_num)
                             if otp is None:
@@ -589,6 +601,10 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
     # এই chat_id এর used_otps list নিশ্চিত করো
     if chat_id not in used_otps:
         used_otps[chat_id] = []
+    
+    # ✅ গ্লোবাল used OTP set নিশ্চিত করো (কখনও রিসেট হয় না)
+    if chat_id not in global_used_otps:
+        global_used_otps[chat_id] = set()
 
     consecutive_errors = 0  # পরপর error হলে track করব
 
@@ -625,12 +641,17 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                         if not msg_id:
                             continue
 
-                        # আগে পাঠানো হয়েছে কিনা চেক
+                        # ✅ প্রথমে গ্লোবাল লিস্টে চেক করো (এটাই মূল চেক)
+                        if msg_id in global_used_otps[chat_id]:
+                            continue
+                        
+                        # পুরনো চেক (redundant কিন্তু safe রাখা হয়েছে)
                         if msg_id in used_otps[chat_id]:
                             continue
 
-                        # এখনই used list এ add করো (duplicate পাঠানো রোধ)
+                        # এখনই উভয় লিস্টে যোগ করো (duplicate পাঠানো রোধ)
                         used_otps[chat_id].append(msg_id)
+                        global_used_otps[chat_id].add(msg_id)  # ✅ গ্লোবালে সংরক্ষণ
 
                         # OTP extract করো
                         otp = extract_otp(item.get("message", ""), phone_number)
@@ -732,7 +753,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 user_service[chat_id]   = service_name
                 received_otps[chat_id]  = None
 
-                # used_otps রিসেট — নতুন নাম্বারের জন্য fresh start
+                # ✅ নাম্বার চেঞ্জ হলে শুধু used_otps রিসেট করুন, global_used_otps নয়
                 used_otps[chat_id] = []
 
                 # ── BACK বাটন: service এর country list এ ফেরত যাবে ──
@@ -1090,7 +1111,7 @@ def handle_query(call):
                 "╔════════════════════╗\n"
                 f"📱 {method.upper()} : {number}\n"
                 "╚════════════════════╝\n"
-                "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚚𝚞𝚎𝚜𝚝"
+                "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚖𝚞𝚎𝚜𝚝"
             )
         elif st == "approved":
             status_text = (
@@ -1233,7 +1254,7 @@ def get_withdraw_amount(message):
             "╔════════════════════╗\n"
             f"📱 {method.upper()} : {number}\n"
             "╚════════════════════╝\n"
-            "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚚𝚞𝚎𝚜𝚝"
+            "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚖𝚞𝚎𝚜𝚝"
         )
         user_kb = types.InlineKeyboardMarkup()
         user_kb.add(types.InlineKeyboardButton("𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆 𝚂𝚃𝙰𝚃𝚄𝚂", callback_data="withdraw_status"))
