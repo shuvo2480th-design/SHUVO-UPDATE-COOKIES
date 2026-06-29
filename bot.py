@@ -150,19 +150,12 @@ load_countries_from_firebase()
 
 # ===================== TOTP (2FA) — stdlib only =====================
 def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
-    """
-    Google Authenticator / website-compatible TOTP।
-    secret_b32 = ওয়েবসাইট থেকে পাওয়া Base32 key (যেমন: JBSWY3DPEHPK3PXP)
-    """
     try:
-        # padding ঠিক করো
         secret_b32 = secret_b32.upper().strip().replace(" ", "")
         pad = (8 - len(secret_b32) % 8) % 8
         secret_bytes = base64.b32decode(secret_b32 + "=" * pad)
-        # time counter
         counter = int(time.time()) // period
         counter_bytes = struct.pack(">Q", counter)
-        # HMAC-SHA1
         h = hmac.new(secret_bytes, counter_bytes, hashlib.sha1).digest()
         offset = h[-1] & 0x0F
         code_int = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF
@@ -173,11 +166,6 @@ def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
 
 # ===================== OTP EXTRACTION (FIXED) =====================
 def extract_otp(message_text, phone_number=None):
-    """
-    Message থেকে সঠিক OTP বের করে।
-    "138 740" এর মতো space দেওয়া OTP ও সঠিকভাবে ধরে।
-    ফোন নম্বরের digit বাদ দেয়।
-    """
     if not message_text:
         return None
 
@@ -207,7 +195,7 @@ def extract_otp(message_text, phone_number=None):
         if 4 <= len(candidate) <= 10:
             return candidate
 
-    # STEP 3: fallback — পুরো message থেকে সব digit জোড়া দিয়ে ফোন নম্বর বাদ দাও
+    # STEP 3: fallback
     all_digits = re.sub(r'\D', '', message_text)
     if phone_digits:
         all_digits = all_digits.replace(phone_digits, "")
@@ -230,7 +218,6 @@ def safe_execute(func):
 def clean_number(num):
     return "".join(filter(str.isdigit, str(num)))
 
-# দেশের নাম → পতাকা (special cases সহ)
 COUNTRY_NAME_MAP = {
     "ivory coast":      "CI",
     "ivory coast 2":    "CI",
@@ -268,32 +255,24 @@ COUNTRY_NAME_MAP = {
 }
 
 def get_flag(country_name):
-    """দেশের নাম থেকে পতাকা ইমোজি বের করে — 🌍 ছাড়া।"""
     if not country_name:
         return ""
     name_lower = country_name.lower().strip()
-
-    # special case map চেক
     if name_lower in COUNTRY_NAME_MAP:
         alpha2 = COUNTRY_NAME_MAP[name_lower]
         return "".join(chr(ord(x) + 127397) for x in alpha2.upper())
-
-    # pycountry দিয়ে খোঁজো
     try:
         c = pycountry.countries.lookup(country_name)
         return "".join(chr(ord(x) + 127397) for x in c.alpha_2.upper())
     except Exception:
         pass
-
-    # fuzzy search
     try:
         results = pycountry.countries.search_fuzzy(country_name)
         if results:
             return "".join(chr(ord(x) + 127397) for x in results[0].alpha_2.upper())
     except Exception:
         pass
-
-    return ""   # পতাকা না পেলে খালি (🌍 না)
+    return ""
 
 def is_joined(user_id):
     try:
@@ -345,7 +324,7 @@ def country_menu_markup(service_name):
         kb.add(types.InlineKeyboardButton("⚠️ কোনো দেশ এড হয়নি", callback_data="noop"))
     else:
         for idx, c in enumerate(countries):
-            flag = get_flag(c["name"])   # 🌍 নেই, শুধু পতাকা
+            flag = get_flag(c["name"])
             label = f"{flag} {c['name']}" if flag else c["name"]
             kb.add(types.InlineKeyboardButton(
                 text=label,
@@ -571,11 +550,11 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
 
                             text = (
                                 "╔════════════════════╗\n"
-                                f"    ➤ 𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿 ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                                f"    ➤ {current_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
                                 "╚════════════════════╝\n\n"
                                 f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.60 𝚃𝙺\n\n"
                                 f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
-                            ).replace("𝟸𝟸𝟺𝟼𝟻𝟺𝟸𝟼𝟸𝟸𝟿𝟿", current_num)
+                            )
                             kb = types.InlineKeyboardMarkup()
                             kb.add(types.InlineKeyboardButton(
                                 text=otp, copy_text=types.CopyTextButton(text=otp)
@@ -599,16 +578,19 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
     finally:
         strd_running[chat_id] = False
 
-# ===================== AUTO OTP (120s) =====================
+# ===================== AUTO OTP — নাম্বার না বদলানো পর্যন্ত চলবে =====================
+# FIX: একটা OTP পেলেই return করে না, নতুন OTP আসলে সেটাও পাঠায়
 def auto_check_otp(chat_id, phone_number, search_msg_id=None):
     if otp_running.get(chat_id):
         return
     otp_running[chat_id] = True
-    start_time = time.time()
+    first_otp_found = False
     try:
-        while time.time() - start_time < 120:
+        while True:
+            # নাম্বার বদলে গেলে loop বন্ধ
             if user_numbers.get(chat_id) != phone_number:
                 return
+
             try:
                 r    = session.get(f"{BASE_URL}/success-otp", timeout=10)
                 data = r.json()
@@ -641,25 +623,21 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                             kb.add(types.InlineKeyboardButton(
                                 text=otp, copy_text=types.CopyTextButton(text=otp)
                             ))
-                            if search_msg_id:
+
+                            if not first_otp_found and search_msg_id:
+                                # প্রথম OTP: search message edit করো
                                 try:
                                     bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
                                 except Exception:
                                     bot.send_message(chat_id, text, reply_markup=kb)
+                                first_otp_found = True
                             else:
+                                # পরবর্তী OTP: নতুন message পাঠাও
                                 bot.send_message(chat_id, text, reply_markup=kb)
-                            return
+
             except Exception:
                 pass
             time.sleep(2)
-
-        if search_msg_id:
-            kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("🔄 TRY AGAIN", callback_data="otp_search"))
-            try:
-                bot.edit_message_text("❌ No OTP Found", chat_id, search_msg_id, reply_markup=kb)
-            except Exception:
-                pass
     finally:
         otp_running[chat_id] = False
 
@@ -835,7 +813,6 @@ def process_2fa(message):
     code = _totp_generate(secret_key)
 
     if code:
-        # কত সেকেন্ড বাকি আছে হিসাব করো
         remaining = 30 - (int(time.time()) % 30)
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(
@@ -969,33 +946,20 @@ def handle_query(call):
         except Exception:
             bot.send_message(cid, price_text, reply_markup=kb)
 
+    # FIX: back_profile → GET NUMBER এর মতো service menu দেখাবে
     elif call.data == "back_profile":
-        uid_str = str(uid)
-        balance = get_firebase_balance(uid_str)
-        markup  = types.InlineKeyboardMarkup()
-        markup.row(
-            types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"),
-            types.InlineKeyboardButton("💰OTP PRICE CHECK", callback_data="otp_price")
-        )
-        markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
-        msg_text = (
-            "╔════════════════════╗\n"
-            "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            f"🆔 𝙸𝙳 : {uid_str}\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} TK\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            "✅ 𝚂𝚃𝙰𝚃𝚄𝚂 : ACTIVE\n"
-            "╚════════════════════╝"
-        )
         try:
-            bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=markup)
+            bot.edit_message_text(
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                cid, call.message.message_id,
+                reply_markup=service_menu_markup()
+            )
         except Exception:
-            bot.send_message(cid, msg_text, reply_markup=markup)
+            bot.send_message(
+                cid,
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                reply_markup=service_menu_markup()
+            )
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
@@ -1058,7 +1022,7 @@ def handle_query(call):
                 f"📱 {method.upper()} : {number}\n"
                 "╚════════════════════╝"
             )
-        else:  # rejected
+        else:
             status_text = (
                 "╔════════════════════╗\n"
                 "❌ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝙹𝙴𝙲𝚃𝙴𝙳\n"
@@ -1086,7 +1050,6 @@ def handle_query(call):
         method = w.get("method", "")
         number = w.get("number", "")
         update_firebase_balance(target_uid, -amount)
-        # status আপডেট
         withdraw_status[target_uid] = {
             "status": "approved",
             "amount": amount,
@@ -1122,7 +1085,6 @@ def handle_query(call):
         amount = w.get("amount", 0)
         method = w.get("method", "")
         number = w.get("number", "")
-        # status আপডেট
         withdraw_status[target_uid] = {
             "status": "rejected",
             "amount": amount,
@@ -1166,7 +1128,6 @@ def get_withdraw_amount(message):
         method = withdraw_data[uid]['method']
         number = withdraw_data[uid]['number']
 
-        # withdraw status pending সেট করো
         withdraw_status[str(uid)] = {
             "status": "pending",
             "amount": amount,
@@ -1174,7 +1135,6 @@ def get_withdraw_amount(message):
             "number": number
         }
 
-        # ইউজারকে pending মেসেজ পাঠাও
         user_text = (
             "╔════════════════════╗\n"
             "⏳ 𝚈𝙾𝚄𝚁 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙸𝚂 𝙿𝙴𝙽𝙳𝙸𝙽𝙶\n"
@@ -1194,7 +1154,6 @@ def get_withdraw_amount(message):
         user_kb.add(types.InlineKeyboardButton("𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆 𝚂𝚃𝙰𝚃𝚄𝚂", callback_data="withdraw_status"))
         bot.send_message(message.chat.id, user_text, reply_markup=user_kb)
 
-        # এডমিনকে মেসেজ পাঠাও
         admin_text = (
             "╔════════════════════╗\n"
             "💸 𝙽𝙴𝚆 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝚀𝚄𝙴𝚂𝚃\n"
