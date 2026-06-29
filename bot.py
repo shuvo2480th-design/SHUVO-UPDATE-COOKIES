@@ -612,7 +612,9 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                         if msg_id in used_otps[chat_id]:
                             continue
 
-                        # নতুন OTP — used list এ add করো
+                        # নতুন OTP — used list এ add করো (double check)
+                        if msg_id in used_otps[chat_id]:
+                            continue
                         used_otps[chat_id].append(msg_id)
 
                         otp = extract_otp(item.get("message", ""), phone_number)
