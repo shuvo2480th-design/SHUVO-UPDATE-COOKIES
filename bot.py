@@ -43,7 +43,7 @@ FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
 
-# ===== ৪টি হার্ডকোড সার্ভিস বাটন (কোনোভাবেই পরিবর্তন হবে না) =====
+# ===== ৪টি হার্ডকোড সার্ভিস বাটন =====
 FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
 
 SERVICE_ICONS = {
@@ -61,17 +61,17 @@ logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(levelname)s - %
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 
 # ===================== IN-MEMORY STATE =====================
-users          = {}
-user_ranges    = {}
-user_service   = {}
-user_numbers   = {}
-user_countries = {}
-received_otps  = {}
-used_otps      = {}
-otp_running    = {}
-strd_running   = {}
-withdraw_data  = {}
-withdraw_status = {}  # uid -> {"status": "pending"/"approved"/"rejected", "amount": ..., "method": ..., "number": ...}
+users           = {}
+user_ranges     = {}
+user_service    = {}
+user_numbers    = {}
+user_countries  = {}
+received_otps   = {}
+used_otps       = {}
+otp_running     = {}
+strd_running    = {}
+withdraw_data   = {}
+withdraw_status = {}
 
 service_countries = {s: [] for s in FIXED_SERVICES}
 
@@ -148,7 +148,7 @@ def save_countries_to_firebase(service_name):
 load_all_users_from_firebase()
 load_countries_from_firebase()
 
-# ===================== TOTP (2FA) — stdlib only =====================
+# ===================== TOTP (2FA) =====================
 def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
     try:
         secret_b32 = secret_b32.upper().strip().replace(" ", "")
@@ -164,14 +164,14 @@ def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
     except Exception:
         return None
 
-# ===================== OTP EXTRACTION (FIXED) =====================
+# ===================== OTP EXTRACTION =====================
 def extract_otp(message_text, phone_number=None):
     if not message_text:
         return None
 
     phone_digits = clean_number(phone_number) if phone_number else ""
 
-    # STEP 1: "138 740" বা "1 3 8 7 4 0" এর মতো spaced OTP ধরো
+    # STEP 1: spaced OTP যেমন "138 740"
     spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
     for match in spaced_matches:
         joined = match.replace(" ", "")
@@ -182,7 +182,7 @@ def extract_otp(message_text, phone_number=None):
         if 4 <= len(joined) <= 10:
             return joined
 
-    # STEP 2: সাধারণ ৪-১০ digit এর সংখ্যা খোঁজো (space ছাড়া)
+    # STEP 2: সাধারণ ৪-১০ digit
     candidates = re.findall(r'\b(\d{4,10})\b', message_text)
     for candidate in candidates:
         if phone_digits:
@@ -471,10 +471,11 @@ def price_command(message):
         "✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
     )
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+    kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
     bot.send_message(message.chat.id, price_text, reply_markup=kb)
 
-
+@bot.message_handler(commands=['addmoney'])
+def addmoney_command(message):
     if str(message.from_user.id) != ADMIN_ID:
         return
     parts = message.text.split()
@@ -532,7 +533,7 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                 data = r.json()
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
-                        msg_id = item.get("otp_id") or item.get("id")
+                        msg_id   = item.get("otp_id") or item.get("id")
                         api_num2 = clean_number(item.get("number", ""))
                         cur_num2 = clean_number(current_num)
                         if (api_num2 in cur_num2 or cur_num2 in api_num2) and msg_id not in used_otps.get(chat_id, []):
@@ -577,50 +578,66 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
     finally:
         strd_running[chat_id] = False
 
-# ===================== AUTO OTP — নাম্বার না বদলানো পর্যন্ত চলবে =====================
+# ===================== AUTO OTP — মজবুত লজিক =====================
 def auto_check_otp(chat_id, phone_number, search_msg_id=None):
+    # যদি এই নাম্বারের জন্য আগে থেকে loop চলছে তাহলে বন্ধ করো
     if otp_running.get(chat_id):
         return
     otp_running[chat_id] = True
     first_otp_found = False
 
-    # এই নাম্বারের জন্য used_otps রিসেট (নতুন session)
+    # এই chat_id এর used_otps list নিশ্চিত করো
     if chat_id not in used_otps:
         used_otps[chat_id] = []
 
+    consecutive_errors = 0  # পরপর error হলে track করব
+
     while True:
         try:
-            # নাম্বার বদলে গেলে loop বন্ধ
+            # নাম্বার বদলে গেলে এই loop বন্ধ করো
             if user_numbers.get(chat_id) != phone_number:
                 otp_running[chat_id] = False
                 return
 
             try:
-                r    = session.get(f"{BASE_URL}/success-otp", timeout=10)
+                r = session.get(f"{BASE_URL}/success-otp", timeout=15)
+                r.raise_for_status()
                 data = r.json()
-                if data.get("meta", {}).get("code") == 200:
-                    for item in data.get("data", {}).get("otps", []):
-                        msg_id = item.get("otp_id") or item.get("id")
+                consecutive_errors = 0  # success হলে error count রিসেট
 
-                        # এই নাম্বারের OTP কিনা চেক
+                if data.get("meta", {}).get("code") == 200:
+                    otps = data.get("data", {}).get("otps", [])
+
+                    for item in otps:
+                        # নাম্বার match চেক
                         api_num = clean_number(item.get("number", ""))
-                        my_num = clean_number(phone_number)
+                        my_num  = clean_number(phone_number)
+
+                        if not api_num or not my_num:
+                            continue
+
+                        # নাম্বার match না হলে skip
                         if api_num not in my_num and my_num not in api_num:
+                            continue
+
+                        # unique OTP id
+                        msg_id = item.get("otp_id") or item.get("id")
+                        if not msg_id:
                             continue
 
                         # আগে পাঠানো হয়েছে কিনা চেক
                         if msg_id in used_otps[chat_id]:
                             continue
 
-                        # নতুন OTP — used list এ add করো (double check)
-                        if msg_id in used_otps[chat_id]:
-                            continue
+                        # এখনই used list এ add করো (duplicate পাঠানো রোধ)
                         used_otps[chat_id].append(msg_id)
 
+                        # OTP extract করো
                         otp = extract_otp(item.get("message", ""), phone_number)
                         if otp is None:
                             continue
 
+                        # ব্যালেন্স আপডেট
                         new_bal = update_firebase_balance(chat_id, 0.60)
                         received_otps[chat_id] = otp
 
@@ -639,18 +656,36 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                         if not first_otp_found and search_msg_id:
                             # প্রথম OTP: search message edit করো
                             try:
-                                bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
+                                bot.edit_message_text(
+                                    text, chat_id, search_msg_id, reply_markup=kb
+                                )
+                                first_otp_found = True
                             except Exception:
-                                bot.send_message(chat_id, text, reply_markup=kb)
-                            first_otp_found = True
+                                # edit fail হলে নতুন message পাঠাও
+                                try:
+                                    bot.send_message(chat_id, text, reply_markup=kb)
+                                    first_otp_found = True
+                                except Exception:
+                                    pass
                         else:
-                            # ২য়, ৩য়... OTP: নতুন message পাঠাও
-                            bot.send_message(chat_id, text, reply_markup=kb)
+                            # ২য়, ৩য়... OTP নতুন message
+                            try:
+                                bot.send_message(chat_id, text, reply_markup=kb)
+                            except Exception:
+                                pass
 
+            except requests.exceptions.Timeout:
+                consecutive_errors += 1
+            except requests.exceptions.RequestException:
+                consecutive_errors += 1
             except Exception:
-                pass
+                consecutive_errors += 1
 
-            time.sleep(2)
+            # পরপর ৫ বার error হলে একটু বেশি wait করো
+            if consecutive_errors >= 5:
+                time.sleep(5)
+            else:
+                time.sleep(2)
 
         except Exception:
             time.sleep(2)
@@ -686,16 +721,27 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 full_num = str(data["data"]["full_number"]).replace("+", "")
                 country  = data["data"].get("country", "Unknown")
 
+                # আগের OTP loop বন্ধ করো
+                otp_running[chat_id]    = False
                 strd_running[chat_id]   = False
+                time.sleep(0.1)  # loop বন্ধ হতে একটু সময় দাও
+
                 user_numbers[chat_id]   = full_num
                 user_countries[chat_id] = country
                 user_ranges[chat_id]    = rid
                 user_service[chat_id]   = service_name
                 received_otps[chat_id]  = None
-                # used_otps রিসেট না করে পুরনো id গুলো রেখে দাও
-                # তাহলে আগের নাম্বারের OTP নতুন নাম্বারে আসবে না
-                if chat_id not in used_otps:
-                    used_otps[chat_id] = []
+
+                # used_otps রিসেট — নতুন নাম্বারের জন্য fresh start
+                used_otps[chat_id] = []
+
+                # ── BACK বাটন: service এর country list এ ফেরত যাবে ──
+                # service_name যদি FIXED_SERVICES এ থাকে → country list
+                # অন্যথায় → service menu
+                if service_name in FIXED_SERVICES:
+                    back_cb = f"back_to_country_{service_name}"
+                else:
+                    back_cb = "back_to_services"
 
                 kb = types.InlineKeyboardMarkup(row_width=2)
                 kb.add(types.InlineKeyboardButton(
@@ -706,7 +752,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                     types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"),
                     types.InlineKeyboardButton("🔐 OTP GROUP", url=GROUP_URL)
                 )
-                kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
+                kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data=back_cb))
 
                 msg_text = (
                     "✅ Number Assigned !\n"
@@ -722,8 +768,11 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 except Exception:
                     bot.send_message(chat_id, msg_text, reply_markup=kb)
 
+                # নতুন OTP loop শুরু করো
                 threading.Thread(
-                    target=auto_check_otp, args=(chat_id, full_num), daemon=True
+                    target=auto_check_otp,
+                    args=(chat_id, full_num),
+                    daemon=True
                 ).start()
                 return
 
@@ -800,7 +849,7 @@ def handle_text(message):
             types.InlineKeyboardButton("🏦 WITHDRAW", callback_data="withdraw"),
             types.InlineKeyboardButton("💰OTP PRICE CHECK", callback_data="otp_price")
         )
-        markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+        markup.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
         msg_text = (
             "╔════════════════════╗\n"
             "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
@@ -867,6 +916,7 @@ def handle_query(call):
         else:
             bot.answer_callback_query(call.id, "❌ Still not joined!")
 
+    # ── Service menu ──
     elif call.data == "back_to_services":
         try:
             bot.edit_message_text(
@@ -879,6 +929,25 @@ def handle_query(call):
                 cid,
                 "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
                 reply_markup=service_menu_markup()
+            )
+
+    # ── Number Assigned এর BACK → সেই service এর country list ──
+    elif call.data.startswith("back_to_country_"):
+        service_name = call.data.replace("back_to_country_", "")
+        if service_name not in FIXED_SERVICES:
+            service_name = user_service.get(cid, "")
+        icon = SERVICE_ICONS.get(service_name, "📱")
+        try:
+            bot.edit_message_text(
+                f"{icon} {service_name.upper()} — দেশ সিলেক্ট করুন:",
+                cid, call.message.message_id,
+                reply_markup=country_menu_markup(service_name)
+            )
+        except Exception:
+            bot.send_message(
+                cid,
+                f"{icon} {service_name.upper()} — দেশ সিলেক্ট করুন:",
+                reply_markup=country_menu_markup(service_name)
             )
 
     elif call.data.startswith("sv_"):
@@ -957,13 +1026,12 @@ def handle_query(call):
             "✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
         )
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_profile"))
+        kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
         try:
             bot.edit_message_text(price_text, cid, call.message.message_id, reply_markup=kb)
         except Exception:
             bot.send_message(cid, price_text, reply_markup=kb)
 
-    # FIX: back_profile → GET NUMBER এর মতো service menu দেখাবে
     elif call.data == "back_profile":
         try:
             bot.edit_message_text(
@@ -999,12 +1067,12 @@ def handle_query(call):
         bot.register_next_step_handler(msg, get_withdraw_number)
 
     elif call.data == "withdraw_status":
-        uid_str = str(uid)
+        uid_str     = str(uid)
         status_info = withdraw_status.get(uid_str)
         if not status_info:
             bot.answer_callback_query(call.id, "❌ কোনো withdraw request নেই।")
             return
-        st = status_info.get("status", "pending")
+        st     = status_info.get("status", "pending")
         amount = status_info.get("amount", 0)
         method = status_info.get("method", "")
         number = status_info.get("number", "")
@@ -1062,10 +1130,10 @@ def handle_query(call):
             bot.answer_callback_query(call.id, "❌ Admin only!")
             return
         target_uid = call.data.split("_")[1]
-        w = withdraw_data.get(int(target_uid), {})
-        amount = w.get("amount", 0)
-        method = w.get("method", "")
-        number = w.get("number", "")
+        w          = withdraw_data.get(int(target_uid), {})
+        amount     = w.get("amount", 0)
+        method     = w.get("method", "")
+        number     = w.get("number", "")
         update_firebase_balance(target_uid, -amount)
         withdraw_status[target_uid] = {
             "status": "approved",
@@ -1098,10 +1166,10 @@ def handle_query(call):
             bot.answer_callback_query(call.id, "❌ Admin only!")
             return
         target_uid = call.data.split("_")[1]
-        w = withdraw_data.get(int(target_uid), {})
-        amount = w.get("amount", 0)
-        method = w.get("method", "")
-        number = w.get("number", "")
+        w          = withdraw_data.get(int(target_uid), {})
+        amount     = w.get("amount", 0)
+        method     = w.get("method", "")
+        number     = w.get("number", "")
         withdraw_status[target_uid] = {
             "status": "rejected",
             "amount": amount,
@@ -1131,7 +1199,7 @@ def handle_query(call):
 # ===================== WITHDRAW =====================
 def get_withdraw_number(message):
     withdraw_data[message.from_user.id]["number"] = message.text
-    msg = bot.send_message(message.chat.id, "💰 ENTER AMOUNT (MIN 20 TK)")
+    msg = bot.send_message(message.chat.id, "💰 ENTER AMOUNT (MIN 50 TK)")
     bot.register_next_step_handler(msg, get_withdraw_amount)
 
 def get_withdraw_amount(message):
@@ -1140,7 +1208,7 @@ def get_withdraw_amount(message):
         if amount < 50:
             bot.send_message(message.chat.id, "❌ Minimum 50 TK!")
             return
-        uid = message.from_user.id
+        uid    = message.from_user.id
         withdraw_data[uid]["amount"] = amount
         method = withdraw_data[uid]['method']
         number = withdraw_data[uid]['number']
