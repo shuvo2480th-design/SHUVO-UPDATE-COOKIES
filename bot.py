@@ -579,16 +579,21 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
         strd_running[chat_id] = False
 
 # ===================== AUTO OTP — নাম্বার না বদলানো পর্যন্ত চলবে =====================
-# FIX: একটা OTP পেলেই return করে না, নতুন OTP আসলে সেটাও পাঠায়
 def auto_check_otp(chat_id, phone_number, search_msg_id=None):
     if otp_running.get(chat_id):
         return
     otp_running[chat_id] = True
     first_otp_found = False
-    try:
-        while True:
+
+    # এই নাম্বারের জন্য used_otps রিসেট (নতুন session)
+    if chat_id not in used_otps:
+        used_otps[chat_id] = []
+
+    while True:
+        try:
             # নাম্বার বদলে গেলে loop বন্ধ
             if user_numbers.get(chat_id) != phone_number:
+                otp_running[chat_id] = False
                 return
 
             try:
@@ -597,49 +602,55 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
                         msg_id = item.get("id")
-                        if (
-                            clean_number(item.get("number", "")) in clean_number(phone_number)
-                            and msg_id not in used_otps.get(chat_id, [])
-                        ):
-                            if chat_id not in used_otps:
-                                used_otps[chat_id] = []
-                            used_otps[chat_id].append(msg_id)
 
-                            otp = extract_otp(item.get("message", ""), phone_number)
-                            if not otp:
-                                continue
+                        # এই নাম্বারের OTP কিনা চেক
+                        if clean_number(item.get("number", "")) not in clean_number(phone_number):
+                            continue
 
-                            new_bal = update_firebase_balance(chat_id, 0.60)
-                            received_otps[chat_id] = otp
+                        # আগে পাঠানো হয়েছে কিনা চেক
+                        if msg_id in used_otps[chat_id]:
+                            continue
 
-                            text = (
-                                "╔════════════════════╗\n"
-                                f"    ➤ {phone_number} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
-                                "╚════════════════════╝\n\n"
-                                f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.60 𝚃𝙺\n\n"
-                                f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
-                            )
-                            kb = types.InlineKeyboardMarkup()
-                            kb.add(types.InlineKeyboardButton(
-                                text=otp, copy_text=types.CopyTextButton(text=otp)
-                            ))
+                        # নতুন OTP — used list এ add করো
+                        used_otps[chat_id].append(msg_id)
 
-                            if not first_otp_found and search_msg_id:
-                                # প্রথম OTP: search message edit করো
-                                try:
-                                    bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
-                                except Exception:
-                                    bot.send_message(chat_id, text, reply_markup=kb)
-                                first_otp_found = True
-                            else:
-                                # পরবর্তী OTP: নতুন message পাঠাও
+                        otp = extract_otp(item.get("message", ""), phone_number)
+                        if not otp:
+                            continue
+
+                        new_bal = update_firebase_balance(chat_id, 0.60)
+                        received_otps[chat_id] = otp
+
+                        text = (
+                            "╔════════════════════╗\n"
+                            f"    ➤ {phone_number} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                            "╚════════════════════╝\n\n"
+                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.60 𝚃𝙺\n\n"
+                            f"🏦 𝚃𝙾𝚃𝙰𝙻 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {new_bal:.2f} 𝚃𝙺"
+                        )
+                        kb = types.InlineKeyboardMarkup()
+                        kb.add(types.InlineKeyboardButton(
+                            text=otp, copy_text=types.CopyTextButton(text=otp)
+                        ))
+
+                        if not first_otp_found and search_msg_id:
+                            # প্রথম OTP: search message edit করো
+                            try:
+                                bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
+                            except Exception:
                                 bot.send_message(chat_id, text, reply_markup=kb)
+                            first_otp_found = True
+                        else:
+                            # ২য়, ৩য়... OTP: নতুন message পাঠাও
+                            bot.send_message(chat_id, text, reply_markup=kb)
 
             except Exception:
                 pass
+
             time.sleep(2)
-    finally:
-        otp_running[chat_id] = False
+
+        except Exception:
+            time.sleep(2)
 
 # ===================== NUMBER PROCESSING =====================
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
