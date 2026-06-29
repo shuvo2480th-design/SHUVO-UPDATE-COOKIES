@@ -702,8 +702,10 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                     text=f"+{full_num}",
                     copy_text=types.CopyTextButton(text=f"+{full_num}")
                 ))
-                kb.add(types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"))
-                kb.add(types.InlineKeyboardButton("🔐 OTP GROUP", url=GROUP_URL))
+                kb.row(
+                    types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"),
+                    types.InlineKeyboardButton("🔐 OTP GROUP", url=GROUP_URL)
+                )
                 kb.add(types.InlineKeyboardButton("🔙 BACK", callback_data="back_to_services"))
 
                 msg_text = (
@@ -916,7 +918,7 @@ def handle_query(call):
         user_ranges[cid]  = rid
         user_service[cid] = service_name
         fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
-        process_number(fake_msg, service_name=service_name, rid=rid)
+        process_number(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
 
     elif call.data == "change_num":
         rid          = user_ranges.get(cid)
