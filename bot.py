@@ -692,7 +692,10 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 user_ranges[chat_id]    = rid
                 user_service[chat_id]   = service_name
                 received_otps[chat_id]  = None
-                used_otps[chat_id]      = []
+                # used_otps রিসেট না করে পুরনো id গুলো রেখে দাও
+                # তাহলে আগের নাম্বারের OTP নতুন নাম্বারে আসবে না
+                if chat_id not in used_otps:
+                    used_otps[chat_id] = []
 
                 kb = types.InlineKeyboardMarkup(row_width=2)
                 kb.add(types.InlineKeyboardButton(
