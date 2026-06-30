@@ -72,6 +72,7 @@ otp_running     = {}
 strd_running    = {}
 withdraw_data   = {}
 withdraw_status = {}
+user_names      = {}  # ✅ নতুন: ইউজার নাম store করার জন্য
 
 # ✅ নতুন: GLOBAL used OTP tracker - কখনই রিসেট হয় না
 global_used_otps = {}
@@ -340,7 +341,13 @@ def country_menu_markup(service_name):
 @safe_execute
 @bot.message_handler(commands=['start'])
 def start(message):
-    register_user(message.from_user.id)
+    uid = str(message.from_user.id)
+    register_user(uid)
+    
+    # ✅ ইউজার নাম সেভ করুন
+    user_name = message.from_user.first_name or "User"
+    user_names[uid] = user_name
+    
     if not is_joined(message.from_user.id):
         bot.send_message(
             message.chat.id,
@@ -363,6 +370,45 @@ def count_users(message):
     if str(message.from_user.id) == ADMIN_ID:
         load_all_users_from_firebase()
         bot.reply_to(message, f"👥 মোট ইউজার সংখ্যা: {len(users)}")
+
+@bot.message_handler(commands=['user_info'])
+def user_info(message):
+    if str(message.from_user.id) != ADMIN_ID:
+        return
+    
+    load_all_users_from_firebase()
+    
+    if not users:
+        bot.reply_to(message, "❌ কোনো ইউজার নেই!")
+        return
+    
+    # ✅ ইউজার লিস্ট তৈরি করুন
+    info_text = (
+        "╔════════════════════════════════════╗\n"
+        "      👥 সকল ইউজারের তথ্য 👥\n"
+        "╚════════════════════════════════════╝\n\n"
+    )
+    
+    for idx, uid in enumerate(sorted(users.keys()), 1):
+        balance = get_firebase_balance(uid)
+        user_name = user_names.get(uid, "Unknown")
+        
+        info_text += (
+            f"┌─ #{idx}\n"
+            f"├ 🆔 ID: {uid}\n"
+            f"├ 👤 Name: {user_name}\n"
+            f"├ 💰 Balance: {balance:.2f} TK\n"
+            f"└─────────────────────\n\n"
+        )
+    
+    # Message split করতে হতে পারে যদি অনেক বড় হয়
+    if len(info_text) > 4096:
+        # বড় মেসেজ split করুন
+        parts = [info_text[i:i+4000] for i in range(0, len(info_text), 4000)]
+        for part in parts:
+            bot.send_message(message.chat.id, part)
+    else:
+        bot.send_message(message.chat.id, info_text)
 
 @bot.message_handler(commands=['send'])
 def broadcast(message):
@@ -824,7 +870,13 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
 @safe_execute
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
-    register_user(message.from_user.id)
+    uid = str(message.from_user.id)
+    register_user(uid)
+    
+    # ✅ ইউজার নাম সেভ করুন
+    user_name = message.from_user.first_name or "User"
+    user_names[uid] = user_name
+    
     if not is_joined(message.from_user.id):
         bot.send_message(
             message.chat.id, "⚠️ দয়া করে চ্যানেলে জয়েন করুন।",
