@@ -120,12 +120,14 @@ def update_firebase_balance(uid, amount):
     return new_bal
 
 # --- ইউজার রেজিস্ট্রি ---
-def register_user(uid):
+def register_user(uid, name="User"):
     uid = str(uid)
     if uid not in users:
         users[uid] = {"balance": 0}
     if not _fb_get(f"/users/{uid}/registered"):
         _fb_put(f"/users/{uid}/registered", True)
+    # ✅ নাম Firebase-এ সেভ করুন
+    _fb_put(f"/users/{uid}/name", name)
 
 def load_all_users_from_firebase():
     data = _fb_get("/users")
@@ -133,6 +135,10 @@ def load_all_users_from_firebase():
         for uid in data:
             if uid not in users:
                 users[uid] = {"balance": 0}
+            # ✅ Firebase থেকে নাম লোড করুন
+            name = _fb_get(f"/users/{uid}/name")
+            if name:
+                user_names[uid] = name
 
 # --- সার্ভিসের দেশ লোড/সেভ ---
 def load_countries_from_firebase():
@@ -342,10 +348,12 @@ def country_menu_markup(service_name):
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = str(message.from_user.id)
-    register_user(uid)
     
-    # ✅ ইউজার নাম সেভ করুন
-    user_name = message.from_user.first_name or "User"
+    # ✅ ইউজারনেম বা সম্পূর্ণ নাম নিন
+    user_name = message.from_user.username or f"{message.from_user.first_name or 'User'} {message.from_user.last_name or ''}".strip()
+    
+    # ✅ নাম সহ রেজিস্টার করুন
+    register_user(uid, user_name)
     user_names[uid] = user_name
     
     if not is_joined(message.from_user.id):
@@ -871,10 +879,12 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
     uid = str(message.from_user.id)
-    register_user(uid)
     
-    # ✅ ইউজার নাম সেভ করুন
-    user_name = message.from_user.first_name or "User"
+    # ✅ ইউজারনেম বা সম্পূর্ণ নাম নিন
+    user_name = message.from_user.username or f"{message.from_user.first_name or 'User'} {message.from_user.last_name or ''}".strip()
+    
+    # ✅ নাম সহ রেজিস্টার করুন
+    register_user(uid, user_name)
     user_names[uid] = user_name
     
     if not is_joined(message.from_user.id):
@@ -978,6 +988,11 @@ def process_2fa(message):
 def handle_query(call):
     cid = call.message.chat.id
     uid = call.from_user.id
+    
+    # ✅ ইউজারনেম বা সম্পূর্ণ নাম নিন
+    user_name = call.from_user.username or f"{call.from_user.first_name or 'User'} {call.from_user.last_name or ''}".strip()
+    register_user(uid, user_name)
+    user_names[str(uid)] = user_name
 
     if call.data == "noop":
         bot.answer_callback_query(call.id)
