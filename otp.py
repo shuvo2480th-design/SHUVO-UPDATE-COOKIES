@@ -37,6 +37,7 @@ API_KEY           = "MUBTR1MKUBO"
 CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
 HEADERS           = {"mauthapi": API_KEY}
 DB_FILE           = "otp_history.pkl"
+AUTO_DELETE_SEC   = 15  # ১৫ সেকেন্ড পর অটো ডিলিট
 
 BD_TZ = timezone(timedelta(hours=6))
 
@@ -240,6 +241,21 @@ def extract_otp(message_text, phone_number=None):
             return candidate
     return None
 
+# ===================== AUTO DELETE =====================
+def auto_delete(chat_id, message_id, delay=AUTO_DELETE_SEC):
+    """delay সেকেন্ড পর মেসেজ ডিলিট করবে"""
+    def _delete():
+        time.sleep(delay)
+        try:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
+            requests.post(url, json={
+                "chat_id": chat_id,
+                "message_id": message_id
+            }, timeout=10)
+        except Exception as e:
+            print(f"[Delete Error] {e}")
+    threading.Thread(target=_delete, daemon=True).start()
+
 # ===================== Console API =====================
 def get_country_info(number):
     try:
@@ -271,12 +287,6 @@ PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
 # ===================== SEND WITH STYLED BUTTONS =====================
 def send_with_styled_buttons(text, otp_code, range_clean):
-    """
-    Raw Telegram API দিয়ে পাঠাবে।
-    - OTP বাটন: style=success (সবুজ) + copy_text
-    - RANGE COPY: style=danger (লাল) + copy_text
-    - নিচের ২টা: style=primary (নীল) + url
-    """
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -315,8 +325,13 @@ def send_with_styled_buttons(text, otp_code, range_clean):
     try:
         res = requests.post(url, json=payload, timeout=10)
         result = res.json()
-        # style কাজ না করলে fallback — copy_text সহ normal বাটন
-        if not result.get("ok"):
+
+        if result.get("ok"):
+            # ✅ সফল — message_id নিয়ে ৬০ সেকেন্ড পর ডিলিট করো
+            message_id = result["result"]["message_id"]
+            auto_delete(CHANNEL_ID, message_id, AUTO_DELETE_SEC)
+        else:
+            # Fallback — pyTelegramBotAPI দিয়ে পাঠাও
             fallback_markup = types.InlineKeyboardMarkup()
             fallback_markup.add(types.InlineKeyboardButton(
                 text=f"🟢 {otp_code} 🟢",
@@ -330,7 +345,9 @@ def send_with_styled_buttons(text, otp_code, range_clean):
                 types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
                 types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
             )
-            bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
+            sent = bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
+            auto_delete(CHANNEL_ID, sent.message_id, AUTO_DELETE_SEC)
+
     except Exception as e:
         print(f"[Send Error] {e}")
 
