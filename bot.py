@@ -353,17 +353,19 @@ def join_markup():
     ])
 
 def main_markup():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.row(
-        types.KeyboardButton("📱 GET NUMBER"),
-        types.KeyboardButton("📱 NUMBER BUY")
-    )
-    markup.add(
-        types.KeyboardButton("🔐 GET 2FA CODE"),
-        types.KeyboardButton("👑 ADMIN SUPPORT"),
-        types.KeyboardButton("👤 PROFILE")
-    )
-    return markup
+    return build_inline_keyboard([
+        [
+            make_button("📱 GET NUMBER",  callback_data="main_get_number",  style="primary"),
+            make_button("📱 NUMBER BUY",  callback_data="main_number_buy",  style="success"),
+        ],
+        [
+            make_button("🔐 GET 2FA CODE",   callback_data="main_2fa",           style="primary"),
+            make_button("👑 ADMIN SUPPORT",   callback_data="main_admin_support", style="danger"),
+        ],
+        [
+            make_button("👤 PROFILE", callback_data="main_profile", style="success"),
+        ],
+    ])
 
 def service_menu_markup():
     rows = []
@@ -373,6 +375,7 @@ def service_menu_markup():
         buttons.append(make_button(f"{icon} {name.upper()}", callback_data=f"sv_{name}", style="primary"))
     for i in range(0, len(buttons), 2):
         rows.append(buttons[i:i+2])
+    rows.append([make_button("🔙 BACK", callback_data="back_to_main", style="danger")])
     return build_inline_keyboard(rows)
 
 def country_menu_markup(service_name):
@@ -410,7 +413,7 @@ def profile_markup():
             make_button("🏦 WITHDRAW",        callback_data="withdraw",  style="danger"),
             make_button("💰OTP PRICE CHECK",  callback_data="otp_price", style="success"),
         ],
-        [make_button("🔙 BACK", callback_data="back_to_services", style="primary")],
+        [make_button("🔙 BACK", callback_data="back_to_main", style="primary")],
     ])
 
 def payment_method_markup():
@@ -1004,12 +1007,89 @@ def handle_query(call):
     if call.data == "noop":
         bot.answer_callback_query(call.id)
 
+    # ===== MAIN MENU CALLBACKS =====
+    elif call.data == "main_get_number":
+        try:
+            bot.edit_message_text(
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                cid, call.message.message_id,
+                reply_markup=service_menu_markup()
+            )
+        except Exception:
+            bot.send_message(
+                cid,
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                reply_markup=service_menu_markup()
+            )
+
+    elif call.data == "main_number_buy":
+        msg = bot.send_message(
+            cid,
+            "⚙️ PLEASE ENTER YOUR RANGE\n\n🔢 Example : 2245564"
+        )
+        def _buy_handler(m):
+            user_ranges[m.chat.id] = m.text
+            process_number(m, service_name="NUMBER BUY", rid=m.text)
+        bot.register_next_step_handler(msg, _buy_handler)
+
+    elif call.data == "main_2fa":
+        msg = bot.send_message(
+            cid,
+            "🔐 আপনার 2FA Secret Key পাঠান\n\n"
+            "📌 কোথায় পাবেন:\n"
+            "• Facebook/Instagram → Settings → Security → Two-Factor Authentication → Authentication App → Setup Key\n"
+            "• WhatsApp → Settings → Account → Two-step verification → এর Secret Key\n\n"
+            "🔑 Example: JBSWY3DPEHPK3PXP"
+        )
+        bot.register_next_step_handler(msg, process_2fa)
+
+    elif call.data == "main_admin_support":
+        bot.send_message(
+            cid, "💬 যেকোনো সমস্যার জন্য এডমিনকে মেসেজ দিন।",
+            reply_markup=admin_support_markup()
+        )
+
+    elif call.data == "main_profile":
+        uid_str = str(uid)
+        balance = get_firebase_balance(uid_str)
+        msg_text = (
+            "╔════════════════════╗\n"
+            "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"🆔 𝙸𝙳 : {uid_str}\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} TK\n"
+            "╚════════════════════╝\n"
+            "╔════════════════════╗\n"
+            "✅ 𝚂𝚃𝙰𝚃𝚄𝚂 : ACTIVE\n"
+            "╚════════════════════╝"
+        )
+        try:
+            bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=profile_markup())
+        except Exception:
+            bot.send_message(cid, msg_text, reply_markup=profile_markup())
+
     elif call.data == "verify_join":
         if is_joined(uid):
             bot.answer_callback_query(call.id, "✅ You are verified!")
             start(call.message)
         else:
             bot.answer_callback_query(call.id, "❌ Still not joined!")
+
+    elif call.data == "back_to_main":
+        welcome_text = (
+            "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
+            " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+            "🤖 WELCOME TO TEAM WITH 3.0 NUMBER BOT\n\n"
+            " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+            "♾️ POWERED BY Shuvoᯓᡣ𐭩"
+        )
+        try:
+            bot.edit_message_text(welcome_text, cid, call.message.message_id, reply_markup=main_markup())
+        except Exception:
+            bot.send_message(cid, welcome_text, reply_markup=main_markup())
 
     elif call.data == "back_to_services":
         try:
