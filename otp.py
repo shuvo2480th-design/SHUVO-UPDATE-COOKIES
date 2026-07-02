@@ -269,11 +269,13 @@ def build_message(masked_number, flag, short_code, service, lang):
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
-# ===================== BUILD MARKUP — raw API দিয়ে style/color =====================
+# ===================== SEND WITH STYLED BUTTONS =====================
 def send_with_styled_buttons(text, otp_code, range_clean):
     """
-    Telegram raw API দিয়ে styled বাটন পাঠাবে।
-    style: "primary" = নীল, "success" = সবুজ, "danger" = লাল
+    Raw Telegram API দিয়ে পাঠাবে।
+    - OTP বাটন: style=success (সবুজ) + copy_text
+    - RANGE COPY: style=danger (লাল) + copy_text
+    - নিচের ২টা: style=primary (নীল) + url
     """
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
@@ -284,14 +286,14 @@ def send_with_styled_buttons(text, otp_code, range_clean):
                 [
                     {
                         "text": f"🎀 {otp_code}",
-                        "callback_data": f"otp_{otp_code}",
+                        "copy_text": {"text": otp_code},
                         "style": "success"
                     }
                 ],
                 [
                     {
                         "text": "▰ RANGE COPY ▰",
-                        "callback_data": f"range_{range_clean}",
+                        "copy_text": {"text": range_clean},
                         "style": "danger"
                     }
                 ],
@@ -312,10 +314,25 @@ def send_with_styled_buttons(text, otp_code, range_clean):
     }
     try:
         res = requests.post(url, json=payload, timeout=10)
-        return res.json()
+        result = res.json()
+        # style কাজ না করলে fallback — copy_text সহ normal বাটন
+        if not result.get("ok"):
+            fallback_markup = types.InlineKeyboardMarkup()
+            fallback_markup.add(types.InlineKeyboardButton(
+                text=f"🟢 {otp_code} 🟢",
+                copy_text=types.CopyTextButton(text=otp_code)
+            ))
+            fallback_markup.add(types.InlineKeyboardButton(
+                text="🔴 RANGE COPY 🔴",
+                copy_text=types.CopyTextButton(text=range_clean)
+            ))
+            fallback_markup.row(
+                types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+                types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+            )
+            bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
     except Exception as e:
         print(f"[Send Error] {e}")
-        return None
 
 def fill_xxx(number_str):
     def replace_x(match):
@@ -342,7 +359,6 @@ def send_styled_otp(hit):
     service = detect_service(otp_full)
     text    = build_message(display_masked, flag, short_code, service, lang)
 
-    # Raw API দিয়ে styled বাটন সহ পাঠাও
     send_with_styled_buttons(text, otp_code, real_digits)
 
 def run_bot():
