@@ -97,9 +97,9 @@ def build_inline_keyboard(rows):
             if "url" in d:
                 b = types.InlineKeyboardButton(text=d["text"], url=d["url"])
             elif "copy_text" in d:
+                # ✅ copy_text সহ বাটন — callback_data ছাড়া
                 b = types.InlineKeyboardButton(
                     text=d["text"],
-                    callback_data=d.get("callback_data", "noop"),
                     copy_text=types.CopyTextButton(text=d["copy_text"]["text"])
                 )
             else:
@@ -375,7 +375,7 @@ def country_menu_markup(service_name):
 def number_assigned_markup(full_num, back_cb):
     # ✅ নাম্বার বাটনে copy_text — ক্লিক করলে কপি হবে
     return build_inline_keyboard([
-        [make_button(f"+{full_num}", callback_data="noop", style="success", copy_text_val=f"+{full_num}")],
+        [make_button(f"+{full_num}", style="success", copy_text_val=f"+{full_num}")],
         [
             make_button("🔄 Change Number", callback_data="change_num", style="primary"),
             make_button("🔐 OTP GROUP",     url=GROUP_URL,              style="primary"),
@@ -386,7 +386,7 @@ def number_assigned_markup(full_num, back_cb):
 def otp_result_markup(otp):
     # ✅ OTP বাটনে copy_text — ক্লিক করলে কপি হবে
     return build_inline_keyboard([
-        [make_button(otp, callback_data="noop", style="success", copy_text_val=otp)],
+        [make_button(otp, style="success", copy_text_val=otp)],
     ])
 
 def profile_markup():
@@ -986,7 +986,7 @@ def process_2fa(message):
             f"🔑 Code : {code}\n"
             f"⏳ Valid for : {remaining} seconds",
             reply_markup=build_inline_keyboard([
-                [make_button(code, callback_data="noop", style="success", copy_text_val=code)]
+                [make_button(code, style="success", copy_text_val=code)]
             ])
         )
     else:
