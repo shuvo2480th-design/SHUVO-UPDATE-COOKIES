@@ -317,9 +317,9 @@ def is_joined(user_id):
 # ===================== MARKUP FUNCTIONS =====================
 def join_markup():
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("📢 ➤ JOIN CHANNEL 1", url="https://t.me/range_channele"))
-    kb.add(types.InlineKeyboardButton("📢 ➤ JOIN CHANNEL 2", url="https://t.me/tem_withh"))
-    kb.add(types.InlineKeyboardButton("✅ ═══ VERIFIED ═══ ✅", callback_data="verify_join"))
+    kb.add(types.InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/range_channele"))
+    kb.add(types.InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/tem_withh"))
+    kb.add(types.InlineKeyboardButton("✅ VERIFIED", callback_data="verify_join"))
     return kb
 
 def main_markup():
@@ -336,13 +336,13 @@ def main_markup():
     return markup
 
 def service_menu_markup():
-    """সার্ভিস মেনু — সুন্দর emoji border সহ"""
+    """সার্ভিস মেনু — ছবির মতো সিম্পল"""
     kb = types.InlineKeyboardMarkup(row_width=2)
     button_map = {
-        "Facebook":  "🔵 ══ FACEBOOK ══ 🔵",
-        "WhatsApp":  "💚 ══ WHATSAPP ══ 💚",
-        "Telegram":  "✈️ ══ TELEGRAM ══ ✈️",
-        "Instagram": "📸 ══ INSTAGRAM ══ 📸",
+        "Facebook":  "F FACEBOOK",
+        "WhatsApp":  "💬 WHATSAPP",
+        "Telegram":  "✈️ TELEGRAM",
+        "Instagram": "📸 INSTAGRAM",
     }
     buttons = []
     for name in FIXED_SERVICES:
@@ -356,24 +356,24 @@ def service_menu_markup():
     return kb
 
 def country_menu_markup(service_name):
-    """দেশের লিস্ট — সুন্দর করে"""
+    """দেশের লিস্ট — সিম্পল"""
     kb        = types.InlineKeyboardMarkup(row_width=1)
     countries = service_countries.get(service_name, [])
     if not countries:
         kb.add(types.InlineKeyboardButton(
-            "⚠️ ══ কোনো দেশ এড হয়নি ══ ⚠️",
+            "⚠️ কোনো দেশ এড হয়নি",
             callback_data="noop"
         ))
     else:
         for idx, c in enumerate(countries):
             flag  = get_flag(c["name"])
-            label = f"🌍 {flag} ══ {c['name']} ══ {flag} 🌍" if flag and flag != "🌍" else f"🌍 ══ {c['name']} ══ 🌍"
+            label = f"{flag} {c['name']}" if flag and flag != "🌍" else f"🌍 {c['name']}"
             kb.add(types.InlineKeyboardButton(
                 text=label,
                 callback_data=f"ct_{service_name}__{idx}"
             ))
     kb.add(types.InlineKeyboardButton(
-        "🔙 ══════ BACK ══════ 🔙",
+        "🔙 Back",
         callback_data="back_to_services"
     ))
     return kb
@@ -535,7 +535,7 @@ def price_command(message):
         "╚════════════════════╝"
     )
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 ══════ BACK ══════ 🔙", callback_data="back_to_services"))
+    kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="back_to_services"))
     bot.send_message(message.chat.id, price_text, reply_markup=kb)
 
 @bot.message_handler(commands=['addmoney'])
@@ -630,7 +630,7 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                         )
                         kb = types.InlineKeyboardMarkup()
                         kb.add(types.InlineKeyboardButton(
-                            text=f"📋 ══ {otp} ══ 📋",
+                            text=otp,
                             copy_text=types.CopyTextButton(text=otp)
                         ))
                         try:
@@ -643,10 +643,7 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                         try:
                             active_msg_id = bot.send_message(
                                 chat_id,
-                                "╔════════════════════╗\n"
-                                "  🔍 Next OTP SEARCHING (∞)\n"
-                                "╚════════════════════╝\n"
-                                "⏳ Waiting..."
+                                "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting..."
                             ).message_id
                         except Exception:
                             pass
@@ -713,7 +710,7 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                         )
                         kb = types.InlineKeyboardMarkup()
                         kb.add(types.InlineKeyboardButton(
-                            text=f"📋 ══ {otp} ══ 📋",
+                            text=otp,
                             copy_text=types.CopyTextButton(text=otp)
                         ))
 
@@ -802,14 +799,14 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
 
                 kb = types.InlineKeyboardMarkup(row_width=1)
                 kb.add(types.InlineKeyboardButton(
-                    text=f"📋 ══ +{full_num} ══ 📋",
+                    text=f"+{full_num}",
                     copy_text=types.CopyTextButton(text=f"+{full_num}")
                 ))
                 kb.row(
-                    types.InlineKeyboardButton("🔄 ═ CHANGE NUMBER ═ 🔄", callback_data="change_num"),
-                    types.InlineKeyboardButton("🔐 ═ OTP GROUP ═ 🔐",     url=GROUP_URL)
+                    types.InlineKeyboardButton("🔄 Change Number", callback_data="change_num"),
+                    types.InlineKeyboardButton("🔐 OTP GROUP",     url=GROUP_URL)
                 )
-                kb.add(types.InlineKeyboardButton("🔙 ══════ BACK ══════ 🔙", callback_data=back_cb))
+                kb.add(types.InlineKeyboardButton("🔙 Back", callback_data=back_cb))
 
                 flag = get_flag(country)
                 msg_text = (
@@ -858,7 +855,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 time.sleep(3)
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔄 ══ আবার চেষ্টা করুন ══ 🔄", callback_data="change_num"))
+    kb.add(types.InlineKeyboardButton("🔄 আবার চেষ্টা করুন", callback_data="change_num"))
     try:
         bot.edit_message_text(
             "╔════════════════════╗\n"
@@ -931,10 +928,10 @@ def handle_text(message):
         balance = get_firebase_balance(uid)
         markup  = types.InlineKeyboardMarkup()
         markup.row(
-            types.InlineKeyboardButton("🏦 ═ WITHDRAW ═ 🏦",         callback_data="withdraw"),
-            types.InlineKeyboardButton("💰 ═ OTP PRICE ═ 💰",        callback_data="otp_price")
+            types.InlineKeyboardButton("🏦 WITHDRAW",         callback_data="withdraw"),
+            types.InlineKeyboardButton("💰 OTP PRICE CHECK",        callback_data="otp_price")
         )
-        markup.add(types.InlineKeyboardButton("🔙 ══════ BACK ══════ 🔙", callback_data="back_to_services"))
+        markup.add(types.InlineKeyboardButton("🔙 Back", callback_data="back_to_services"))
         msg_text = (
             "╔════════════════════╗\n"
             "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
@@ -954,7 +951,7 @@ def handle_text(message):
     elif txt == "👑 ADMIN SUPPORT":
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton(
-            "📩 ═══ ADMIN MESSAGE ═══ 📩",
+            "📩 এডমিনকে মেসেজ দিন",
             url=f"tg://user?id={ADMIN_ID}"
         ))
         bot.send_message(
@@ -1148,7 +1145,7 @@ def handle_query(call):
             "╚════════════════════╝"
         )
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("🔙 ══════ BACK ══════ 🔙", callback_data="back_to_services"))
+        kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="back_to_services"))
         try:
             bot.edit_message_text(price_text, cid, call.message.message_id, reply_markup=kb)
         except Exception:
@@ -1161,8 +1158,8 @@ def handle_query(call):
             return
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.row(
-            types.InlineKeyboardButton("💚 ══ BKASH ══ 💚",   callback_data="bkash"),
-            types.InlineKeyboardButton("🟠 ══ ROCKET ══ 🟠",  callback_data="rocket")
+            types.InlineKeyboardButton("💳 BKASH",   callback_data="bkash"),
+            types.InlineKeyboardButton("💳 ROCKET",  callback_data="rocket")
         )
         bot.edit_message_text(
             "╔════════════════════╗\n"
@@ -1313,7 +1310,7 @@ def get_withdraw_amount(message):
 
         user_kb = types.InlineKeyboardMarkup()
         user_kb.add(types.InlineKeyboardButton(
-            "📊 ══ WITHDRAW STATUS ══ 📊",
+            "📊 WITHDRAW STATUS",
             callback_data="withdraw_status"
         ))
         bot.send_message(message.chat.id, (
@@ -1334,8 +1331,8 @@ def get_withdraw_amount(message):
 
         markup = types.InlineKeyboardMarkup(row_width=2)
         markup.row(
-            types.InlineKeyboardButton("✅ ═ APPROVE ═ ✅", callback_data=f"approve_{uid}"),
-            types.InlineKeyboardButton("❌ ═ REJECT ═ ❌",  callback_data=f"reject_{uid}")
+            types.InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{uid}"),
+            types.InlineKeyboardButton("❌ REJECT",  callback_data=f"reject_{uid}")
         )
         bot.send_message(ADMIN_ID, (
             "╔════════════════════╗\n"
