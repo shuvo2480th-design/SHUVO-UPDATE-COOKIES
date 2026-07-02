@@ -214,18 +214,14 @@ def detect_service(msg):
         return "TELEGRAM"
     return "OTP"
 
-# ===================== OTP EXTRACT (সঠিক OTP বের করবে) =====================
+# ===================== OTP EXTRACT =====================
 def extract_otp(message_text, phone_number=None):
-    """
-    Message থেকে সঠিক OTP বের করে।
-    ফোন নাম্বারের ডিজিট বাদ দিয়ে 4-8 ডিজিটের কোড খোঁজে।
-    """
     if not message_text:
         return None
 
     phone_digits = re.sub(r'\D', '', str(phone_number)) if phone_number else ""
 
-    # ধাপ ১: space দিয়ে আলাদা করা OTP (যেমন: 1 2 3 4 5 6)
+    # ধাপ ১: space দিয়ে আলাদা OTP (যেমন: 1 2 3 4 5 6)
     spaced = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
     for match in spaced:
         joined = match.replace(" ", "")
@@ -251,7 +247,7 @@ def extract_otp(message_text, phone_number=None):
 
     return None
 
-# ===================== Console API — OTP পাঠানো =====================
+# ===================== Console API =====================
 def get_country_info(number):
     try:
         clean_number = re.sub(r'\D', '', str(number))
@@ -280,28 +276,30 @@ def build_message(masked_number, flag, short_code, service, lang):
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
+# ===================== BUILD MARKUP (কালার emoji) =====================
 def build_markup(otp_code, range_clean):
     markup = types.InlineKeyboardMarkup()
+
+    # 🟢 সবুজ — OTP বাটন
     markup.add(types.InlineKeyboardButton(
-        text=f"🎀 {otp_code}",
+        text=f"🟢 {otp_code} 🟢",
         copy_text=types.CopyTextButton(text=otp_code)
     ))
+
+    # 🔴 লাল — RANGE COPY বাটন
     markup.add(types.InlineKeyboardButton(
-        text="▰ RANGE COPY ▰",
+        text="🔴 RANGE COPY 🔴",
         copy_text=types.CopyTextButton(text=range_clean)
     ))
+
+    # 🔵 নীল — নিচের ২টা বাটন
     markup.row(
-        types.InlineKeyboardButton("🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("📲 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+        types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+        types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
     )
     return markup
 
 def fill_xxx(number_str):
-    """
-    লাস্টের XXX গুলো র‍্যান্ডম ডিজিট দিয়ে বদলাবে।
-    display সবসময়: প্রথম ৪ ডিজিট + ★★ + শেষ ৪ ডিজিট
-    RANGE COPY বাটনে যাবে পুরো নাম্বার (random filled)
-    """
     def replace_x(match):
         return ''.join([str(random.randint(0, 9)) for _ in match.group()])
     filled = re.sub(r'[Xx]+', replace_x, number_str)
@@ -313,13 +311,11 @@ def send_styled_otp(hit):
 
     flag, short_code, lang, country = get_country_info(full_number)
 
-    # XXX বাদ দিয়ে real digits (RANGE COPY তে যাবে)
-    real_num      = re.sub(r'[Xx]', '', full_number)   # XXX বাদ, real digits
-    real_digits   = re.sub(r'\D', '', real_num)
-    filled_num    = fill_xxx(full_number)                 # display এর জন্য XXX filled
+    real_num       = re.sub(r'[Xx]', '', full_number)
+    real_digits    = re.sub(r'\D', '', real_num)
+    filled_num     = fill_xxx(full_number)
     display_masked = filled_num[:4] + "★★" + filled_num[-4:]
 
-    # সঠিক OTP বের করো
     otp_code = extract_otp(otp_full, full_number)
     if not otp_code:
         m = re.search(r'\b\d{5,8}\b', otp_full)
