@@ -38,7 +38,6 @@ CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/consol
 HEADERS           = {"mauthapi": API_KEY}
 DB_FILE           = "otp_history.pkl"
 
-# বাংলাদেশ সময় (UTC+6)
 BD_TZ = timezone(timedelta(hours=6))
 
 def bd_time():
@@ -218,10 +217,7 @@ def detect_service(msg):
 def extract_otp(message_text, phone_number=None):
     if not message_text:
         return None
-
     phone_digits = re.sub(r'\D', '', str(phone_number)) if phone_number else ""
-
-    # ধাপ ১: space দিয়ে আলাদা OTP (যেমন: 1 2 3 4 5 6)
     spaced = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
     for match in spaced:
         joined = match.replace(" ", "")
@@ -231,8 +227,6 @@ def extract_otp(message_text, phone_number=None):
             continue
         if 4 <= len(joined) <= 8:
             return joined
-
-    # ধাপ ২: সরাসরি 4-8 ডিজিটের নম্বর
     candidates = re.findall(r'\b(\d{4,8})\b', message_text)
     for candidate in candidates:
         if phone_digits:
@@ -244,7 +238,6 @@ def extract_otp(message_text, phone_number=None):
                 continue
         if 4 <= len(candidate) <= 8:
             return candidate
-
     return None
 
 # ===================== Console API =====================
@@ -276,28 +269,53 @@ def build_message(masked_number, flag, short_code, service, lang):
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
-# ===================== BUILD MARKUP (কালার emoji) =====================
-def build_markup(otp_code, range_clean):
-    markup = types.InlineKeyboardMarkup()
-
-    # 🟢 সবুজ — OTP বাটন
-    markup.add(types.InlineKeyboardButton(
-        text=f"🟢 {otp_code} 🟢",
-        copy_text=types.CopyTextButton(text=otp_code)
-    ))
-
-    # 🔴 লাল — RANGE COPY বাটন
-    markup.add(types.InlineKeyboardButton(
-        text="🔴 RANGE COPY 🔴",
-        copy_text=types.CopyTextButton(text=range_clean)
-    ))
-
-    # 🔵 নীল — নিচের ২টা বাটন
-    markup.row(
-        types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
-        types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
-    )
-    return markup
+# ===================== BUILD MARKUP — raw API দিয়ে style/color =====================
+def send_with_styled_buttons(text, otp_code, range_clean):
+    """
+    Telegram raw API দিয়ে styled বাটন পাঠাবে।
+    style: "primary" = নীল, "success" = সবুজ, "danger" = লাল
+    """
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "text": text,
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": f"🎀 {otp_code}",
+                        "callback_data": f"otp_{otp_code}",
+                        "style": "success"
+                    }
+                ],
+                [
+                    {
+                        "text": "▰ RANGE COPY ▰",
+                        "callback_data": f"range_{range_clean}",
+                        "style": "danger"
+                    }
+                ],
+                [
+                    {
+                        "text": "🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
+                        "url": PANEL_BOT_URL,
+                        "style": "primary"
+                    },
+                    {
+                        "text": "📲 𝙼𝙴𝚃𝙷𝙾𝙳",
+                        "url": RANGE_CHANNEL_URL,
+                        "style": "primary"
+                    }
+                ]
+            ]
+        }
+    }
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        return res.json()
+    except Exception as e:
+        print(f"[Send Error] {e}")
+        return None
 
 def fill_xxx(number_str):
     def replace_x(match):
@@ -323,12 +341,9 @@ def send_styled_otp(hit):
 
     service = detect_service(otp_full)
     text    = build_message(display_masked, flag, short_code, service, lang)
-    markup  = build_markup(otp_code, real_digits)
 
-    try:
-        bot.send_message(CHANNEL_ID, text, reply_markup=markup)
-    except Exception as e:
-        print(f"[Send Error] {e}")
+    # Raw API দিয়ে styled বাটন সহ পাঠাও
+    send_with_styled_buttons(text, otp_code, real_digits)
 
 def run_bot():
     print("🚀 OTP Bot (Console API) started...")
