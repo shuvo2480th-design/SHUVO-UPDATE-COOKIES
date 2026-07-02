@@ -353,19 +353,27 @@ def join_markup():
     ])
 
 def main_markup():
-    return build_inline_keyboard([
-        [
-            make_button("📱 GET NUMBER",  callback_data="main_get_number",  style="primary"),
-            make_button("📱 NUMBER BUY",  callback_data="main_number_buy",  style="success"),
-        ],
-        [
-            make_button("🔐 GET 2FA CODE",   callback_data="main_2fa",           style="primary"),
-            make_button("👑 ADMIN SUPPORT",   callback_data="main_admin_support", style="danger"),
-        ],
-        [
-            make_button("👤 PROFILE", callback_data="main_profile", style="success"),
-        ],
-    ])
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+
+    b1 = types.KeyboardButton("📱 GET NUMBER")
+    b1.__dict__["style"] = "primary"
+
+    b2 = types.KeyboardButton("📱 NUMBER BUY")
+    b2.__dict__["style"] = "success"
+
+    b3 = types.KeyboardButton("🔐 GET 2FA CODE")
+    b3.__dict__["style"] = "primary"
+
+    b4 = types.KeyboardButton("👑 ADMIN SUPPORT")
+    b4.__dict__["style"] = "danger"
+
+    b5 = types.KeyboardButton("👤 PROFILE")
+    b5.__dict__["style"] = "success"
+
+    markup.row(b1, b2)
+    markup.row(b3, b4)
+    markup.add(b5)
+    return markup
 
 def service_menu_markup():
     rows = []
