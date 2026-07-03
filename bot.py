@@ -17,6 +17,7 @@ import struct
 from flask import Flask
 from threading import Thread
 from telebot import types
+from datetime import datetime, date
 
 # ===================== FLASK KEEP-ALIVE =====================
 app = Flask('')
@@ -52,6 +53,8 @@ SERVICE_ICONS = {
     "Instagram": "📸",
 }
 
+OTP_PRICE = 0.40
+
 # ===================== SESSION & BOT =====================
 session = requests.Session()
 session.headers.update(HEADERS)
@@ -63,16 +66,21 @@ bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 users           = {}
 user_ranges     = {}
 user_service    = {}
-user_numbers    = {}
-user_countries  = {}
+user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
+user_countries  = {}       # chat_id → [country1, country2]
 received_otps   = {}
 used_otps       = {}
 otp_running     = {}
 strd_running    = {}
 withdraw_data   = {}
-withdraw_status = {}
+withdraw_status = {}       # uid_str → {status, amount, method, number, msg_id}
 user_names      = {}
-admin_state     = {}   # admin panel multi-step state
+admin_state     = {}
+
+# Today stats per user
+today_earn      = {}       # uid_str → float
+today_otp_count = {}       # uid_str → int
+today_date      = {}       # uid_str → date string
 
 global_used_otps = {}
 
@@ -147,20 +155,27 @@ def get_firebase_balance(uid):
         return 0.0
 
 def update_firebase_balance(uid, amount):
-    """ব্যালেন্স আপডেট — Firebase-এ সেভ হবে"""
+    uid = str(uid)
     current = get_firebase_balance(uid)
     new_bal = round(current + amount, 2)
     _fb_put(f"/users/{uid}/balance", new_bal)
+    # today stats
+    today_str = str(date.today())
+    if today_date.get(uid) != today_str:
+        today_date[uid]      = today_str
+        today_earn[uid]      = 0.0
+        today_otp_count[uid] = 0
+    today_earn[uid]      = round(today_earn.get(uid, 0.0) + amount, 2)
+    today_otp_count[uid] = today_otp_count.get(uid, 0) + 1
     return new_bal
 
 def set_firebase_balance(uid, val):
-    """ব্যালেন্স সরাসরি সেট করো"""
+    uid     = str(uid)
     new_bal = round(float(val), 2)
     _fb_put(f"/users/{uid}/balance", new_bal)
     return new_bal
 
 def clear_all_balances():
-    """সব ইউজারের ব্যালেন্স 0"""
     data = _fb_get("/users")
     if isinstance(data, dict):
         for uid in data:
@@ -204,14 +219,14 @@ load_countries_from_firebase()
 # ===================== TOTP (2FA) =====================
 def _totp_generate(secret_b32: str, digits: int = 6, period: int = 30) -> str:
     try:
-        secret_b32 = secret_b32.upper().strip().replace(" ", "")
-        pad = (8 - len(secret_b32) % 8) % 8
-        secret_bytes = base64.b32decode(secret_b32 + "=" * pad)
-        counter = int(time.time()) // period
+        secret_b32    = secret_b32.upper().strip().replace(" ", "")
+        pad           = (8 - len(secret_b32) % 8) % 8
+        secret_bytes  = base64.b32decode(secret_b32 + "=" * pad)
+        counter       = int(time.time()) // period
         counter_bytes = struct.pack(">Q", counter)
-        h = hmac.new(secret_bytes, counter_bytes, hashlib.sha1).digest()
-        offset = h[-1] & 0x0F
-        code_int = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF
+        h             = hmac.new(secret_bytes, counter_bytes, hashlib.sha1).digest()
+        offset        = h[-1] & 0x0F
+        code_int      = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7FFFFFFF
         return str(code_int % (10 ** digits)).zfill(digits)
     except Exception:
         return None
@@ -331,10 +346,6 @@ def join_markup():
     ])
 
 def main_markup(uid=None):
-    """
-    সাধারণ ইউজার: ৫টি বাটন
-    Admin: + ADMIN PANEL বাটন (লাল) — শুধু admin দেখবে
-    """
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     b1 = types.KeyboardButton("📱 GET NUMBER")
     b1.__dict__["style"] = "primary"
@@ -344,11 +355,14 @@ def main_markup(uid=None):
     b3.__dict__["style"] = "primary"
     b4 = types.KeyboardButton("👑 ADMIN SUPPORT")
     b4.__dict__["style"] = "primary"
+    # ✅ BALANCE বাটন উপরে
+    b_bal = types.KeyboardButton("💳 BALANCE")
+    b_bal.__dict__["style"] = "success"
     b5 = types.KeyboardButton("👤 PROFILE")
     b5.__dict__["style"] = "danger"
     markup.row(b1, b2)
     markup.row(b3, b4)
-    markup.add(b5)
+    markup.row(b_bal, b5)
     if uid and is_admin(uid):
         b6 = types.KeyboardButton("⚙️ ADMIN PANEL")
         b6.__dict__["style"] = "danger"
@@ -379,13 +393,31 @@ def country_menu_markup(service_name):
     rows.append([make_button("🔙 Back", callback_data="back_to_services", style="danger")])
     return build_inline_keyboard(rows)
 
-def number_assigned_markup(full_num, back_cb):
+def number_assigned_markup(nums, countries, back_cb):
+    """
+    ✅ ২টা নাম্বার — প্রতিটা আলাদা বাটনে, flag+number সহ
+    nums: list of up to 2 phone numbers
+    countries: list of corresponding country names
+    """
+    rows = []
+    for i, num in enumerate(nums):
+        country = countries[i] if i < len(countries) else ""
+        flag    = get_flag(country)
+        label   = f"{flag}  +{num}"
+        rows.append([make_button(label, style="primary", copy_text_val=f"+{num}")])
+    rows.append([
+        make_button("🔄 Change Number", callback_data="change_num", style="primary"),
+        make_button("🔐 OTP GROUP",     url=GROUP_URL,              style="primary"),
+    ])
+    rows.append([make_button("🔙 BACK", callback_data=back_cb, style="danger")])
+    return build_inline_keyboard(rows)
+
+def service_info_markup(service_name, country, back_cb):
+    """Country + Service — আলাদা নীল বাটন"""
+    flag = get_flag(country)
     return build_inline_keyboard([
-        [make_button(f"+{full_num}", style="success", copy_text_val=f"+{full_num}")],
-        [
-            make_button("🔄 Change Number", callback_data="change_num", style="primary"),
-            make_button("🔐 OTP GROUP",     url=GROUP_URL,              style="primary"),
-        ],
+        [make_button(f"{flag} {country}", callback_data="noop", style="primary")],
+        [make_button(f"📲 {service_name.upper()}", callback_data="noop", style="primary")],
         [make_button("🔙 BACK", callback_data=back_cb, style="danger")],
     ])
 
@@ -396,20 +428,46 @@ def otp_result_markup(otp):
 
 def profile_markup():
     return build_inline_keyboard([
-        [
-            make_button("🏦 WITHDRAW",       callback_data="withdraw",  style="danger"),
-            make_button("💰OTP PRICE CHECK", callback_data="otp_price", style="success"),
-        ],
-        [make_button("🔙 BACK", callback_data="back_to_main", style="primary")],
+        [make_button("📩 OTP PRICE", callback_data="otp_price", style="success")],
+        [make_button("🔙 BACK",      callback_data="back_to_main", style="danger")],
     ])
 
-def payment_method_markup():
+def balance_markup(balance):
+    return build_inline_keyboard([
+        [make_button(f"💶 WITHDRAW", callback_data="withdraw", style="danger")],
+        [make_button("🔙 BACK",      callback_data="back_to_main", style="primary")],
+    ])
+
+def withdraw_select_method_markup(balance):
     return build_inline_keyboard([
         [
-            make_button("💳 BKASH",  callback_data="bkash",  style="primary"),
+            make_button("💳 BKASH",  callback_data="bkash",  style="success"),
             make_button("💳 ROCKET", callback_data="rocket", style="primary"),
         ],
-        [make_button("❌ CANCEL", callback_data="cancel_withdraw", style="danger")],
+        [make_button("🔙 BACK", callback_data="back_balance", style="danger")],
+    ])
+
+def withdraw_cancel_markup():
+    return build_inline_keyboard([
+        [make_button("❌ Cancel", callback_data="cancel_withdraw", style="danger")],
+    ])
+
+def withdraw_confirm_markup():
+    return build_inline_keyboard([
+        [
+            make_button("✅ Confirm", callback_data="confirm_withdraw", style="success"),
+            make_button("❌ Cancel",  callback_data="cancel_withdraw",  style="danger"),
+        ],
+    ])
+
+def withdraw_check_markup():
+    return build_inline_keyboard([
+        [make_button("📋 WITHDRAW CHECK", callback_data="withdraw_status", style="primary")],
+    ])
+
+def withdraw_refresh_markup():
+    return build_inline_keyboard([
+        [make_button("🔄 Refresh", callback_data="withdraw_refresh", style="primary")],
     ])
 
 def admin_approve_markup(uid):
@@ -420,11 +478,6 @@ def admin_approve_markup(uid):
         ],
     ])
 
-def withdraw_status_markup():
-    return build_inline_keyboard([
-        [make_button("𝚆𝙸𝚃𝙷𝙳𝚁𝙰𝚆 𝚂𝚃𝙰𝚃𝚄𝚂", callback_data="withdraw_status", style="primary")],
-    ])
-
 def try_again_markup():
     return build_inline_keyboard([
         [make_button("🔄 আবার চেষ্টা করুন", callback_data="change_num", style="danger")],
@@ -432,7 +485,7 @@ def try_again_markup():
 
 def otp_price_markup():
     return build_inline_keyboard([
-        [make_button("🔙 BACK", callback_data="back_to_services", style="primary")],
+        [make_button("🔙 BACK", callback_data="back_profile", style="primary")],
     ])
 
 def admin_support_markup():
@@ -459,7 +512,6 @@ def admin_panel_markup():
     ])
 
 def admin_service_select_markup(action):
-    """Add Country — সার্ভিস সিলেক্ট"""
     return build_inline_keyboard([
         [
             make_button("🔵 Facebook",  callback_data=f"adm_svc_{action}_Facebook",  style="primary"),
@@ -480,8 +532,8 @@ def admin_cancel_markup():
 def admin_confirm_send_markup():
     return build_inline_keyboard([
         [
-            make_button("📨 SEND", callback_data="adm_confirm_send", style="success"),
-            make_button("❌ Cancel", callback_data="adm_cancel",     style="danger"),
+            make_button("📨 SEND",    callback_data="adm_confirm_send", style="success"),
+            make_button("❌ Cancel",  callback_data="adm_cancel",       style="danger"),
         ],
     ])
 
@@ -509,7 +561,7 @@ def start(message):
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=main_markup(uid))
 
-# ===================== ADMIN COMMANDS (text) =====================
+# ===================== ADMIN COMMANDS =====================
 @bot.message_handler(commands=['add'])
 def add_service(message):
     if not is_admin(message.from_user.id):
@@ -525,15 +577,12 @@ def add_service(message):
     elif raw.count(":") >= 2:
         parts = [p.strip() for p in raw.split(":", 2)]
     else:
-        bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545")
-        return
+        bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545"); return
     if len(parts) < 3 or not all(parts):
-        bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545")
-        return
+        bot.reply_to(message, "⚠️ সঠিক ফরম্যাট:\n/add Facebook|Guinea|2246545"); return
     service_name, country_name, rid = parts[0], parts[1], parts[2]
     if service_name not in FIXED_SERVICES:
-        bot.reply_to(message, f"❌ '{service_name}' সার্ভিস নেই।")
-        return
+        bot.reply_to(message, f"❌ '{service_name}' সার্ভিস নেই।"); return
     countries = service_countries[service_name]
     found = False
     for c in countries:
@@ -572,12 +621,11 @@ def del_service(message):
 
 @bot.message_handler(commands=['price'])
 def price_command(message):
-    price_text = (
-        "💎 𝚂𝚃𝙰𝚃𝚄𝚂 💎\n\n"
-        "📲 𝚃𝙾𝙳𝙰𝚈 𝙾𝚃𝙿 𝙿𝚁𝙸𝙲𝙴 💰 𝟶.𝟺𝟶৳ 🔥\n\n"
-        "✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
+    bot.send_message(
+        message.chat.id,
+        f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+        reply_markup=otp_price_markup()
     )
-    bot.send_message(message.chat.id, price_text, reply_markup=otp_price_markup())
 
 @bot.message_handler(commands=['addmoney'])
 def addmoney_command(message):
@@ -596,8 +644,7 @@ def del_balance_cmd(message):
         return
     parts = message.text.split()
     if len(parts) == 1:
-        bot.reply_to(message, "⚠️ /delbalance [user_id] [amount]\n/delbalance [user_id]\n/delbalance all")
-        return
+        bot.reply_to(message, "⚠️ /delbalance [user_id] [amount]\n/delbalance [user_id]\n/delbalance all"); return
     if parts[1].lower() == "all":
         clear_all_balances()
         bot.reply_to(message, "✅ সব ব্যালেন্স 0 করা হয়েছে।"); return
@@ -655,39 +702,45 @@ def broadcast(message):
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
     chat_id  = message.chat.id
-    user_num = user_numbers.get(chat_id)
-    if not user_num:
+    nums     = user_numbers.get(chat_id, [])
+    if not nums:
         bot.reply_to(message, "❌ আগে একটি নাম্বার নিন!"); return
     if strd_running.get(chat_id):
         bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
     search_msg = bot.send_message(chat_id, "🔍 OTP SEARCHING (∞)...\n⏳ Number change না হওয়া পর্যন্ত চালু...")
-    threading.Thread(target=infinite_otp_search, args=(chat_id, user_num, search_msg.message_id), daemon=True).start()
+    threading.Thread(target=infinite_otp_search, args=(chat_id, list(nums), search_msg.message_id), daemon=True).start()
 
-def infinite_otp_search(chat_id, start_number, search_msg_id):
+def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
     active_msg_id = search_msg_id
     try:
         while strd_running.get(chat_id):
-            current_num = user_numbers.get(chat_id)
-            if current_num and current_num != start_number:
-                start_number = current_num
+            current_nums = user_numbers.get(chat_id, [])
+            if current_nums and current_nums != start_numbers:
+                start_numbers = list(current_nums)
                 try:
-                    active_msg_id = bot.send_message(chat_id, f"🔄 নতুন নাম্বারে OTP খোঁজা শুরু: +{start_number}").message_id
+                    nums_str = " | ".join(f"+{n}" for n in start_numbers)
+                    active_msg_id = bot.send_message(chat_id, f"🔄 নতুন নাম্বারে OTP খোঁজা শুরু: {nums_str}").message_id
                 except Exception:
                     pass
-            if not current_num:
+            if not current_nums:
                 time.sleep(2); continue
             try:
                 r    = session.get(f"{BASE_URL}/success-otp", timeout=10)
                 data = r.json()
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
-                        msg_id   = item.get("otp_id") or item.get("id")
-                        api_num2 = clean_number(item.get("number", ""))
-                        cur_num2 = clean_number(current_num)
+                        msg_id  = item.get("otp_id") or item.get("id")
+                        api_num = clean_number(item.get("number", ""))
                         if msg_id in global_used_otps.get(chat_id, set()):
                             continue
-                        if not (api_num2 in cur_num2 or cur_num2 in api_num2):
+                        # check against all current numbers
+                        matched_num = None
+                        for num in current_nums:
+                            cur = clean_number(num)
+                            if api_num in cur or cur in api_num:
+                                matched_num = num; break
+                        if not matched_num:
                             continue
                         if msg_id in used_otps.get(chat_id, []):
                             continue
@@ -697,16 +750,18 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
                             global_used_otps[chat_id] = set()
                         used_otps[chat_id].append(msg_id)
                         global_used_otps[chat_id].add(msg_id)
-                        otp = extract_otp(item.get("message", ""), current_num)
+                        otp = extract_otp(item.get("message", ""), matched_num)
                         if otp is None:
                             continue
-                        new_bal = update_firebase_balance(chat_id, 0.40)
+                        uid_str = str(chat_id)
+                        new_bal = update_firebase_balance(uid_str, OTP_PRICE)
                         received_otps[chat_id] = otp
+                        flag    = get_flag(user_countries.get(chat_id, [""])[0] if isinstance(user_countries.get(chat_id), list) else user_countries.get(chat_id, ""))
                         text = (
                             "╔════════════════════╗\n"
-                            f"    ➤ {current_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                            f"    ➤ {matched_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
                             "╚════════════════════╝\n"
-                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.40 𝚃𝙺"
+                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +{OTP_PRICE:.2f} 𝚃𝙺"
                         )
                         kb = otp_result_markup(otp)
                         try:
@@ -726,8 +781,9 @@ def infinite_otp_search(chat_id, start_number, search_msg_id):
     finally:
         strd_running[chat_id] = False
 
-# ===================== AUTO OTP =====================
-def auto_check_otp(chat_id, phone_number, search_msg_id=None):
+# ===================== AUTO OTP — ২ নাম্বারে খোঁজে =====================
+def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
+    """phone_numbers: list of up to 2 numbers"""
     if otp_running.get(chat_id):
         return
     otp_running[chat_id] = True
@@ -737,10 +793,17 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
     if chat_id not in global_used_otps:
         global_used_otps[chat_id] = set()
     consecutive_errors = 0
+
     while True:
         try:
-            if user_numbers.get(chat_id) != phone_number:
+            # নাম্বার বদলে গেলে বন্ধ
+            current_nums = user_numbers.get(chat_id, [])
+            if not current_nums:
                 otp_running[chat_id] = False; return
+            # যদি কোনো নাম্বারই phone_numbers এ না থাকে
+            if not any(n in current_nums for n in phone_numbers):
+                otp_running[chat_id] = False; return
+
             try:
                 r = session.get(f"{BASE_URL}/success-otp", timeout=15)
                 r.raise_for_status()
@@ -749,10 +812,13 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                 if data.get("meta", {}).get("code") == 200:
                     for item in data.get("data", {}).get("otps", []):
                         api_num = clean_number(item.get("number", ""))
-                        my_num  = clean_number(phone_number)
-                        if not api_num or not my_num:
-                            continue
-                        if api_num not in my_num and my_num not in api_num:
+                        # ২ নাম্বারের যেকোনো একটায় match করলেই চলবে
+                        matched_num = None
+                        for num in phone_numbers:
+                            my_num = clean_number(num)
+                            if api_num and my_num and (api_num in my_num or my_num in api_num):
+                                matched_num = num; break
+                        if not matched_num:
                             continue
                         msg_id = item.get("otp_id") or item.get("id")
                         if not msg_id:
@@ -763,16 +829,17 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
                             continue
                         used_otps[chat_id].append(msg_id)
                         global_used_otps[chat_id].add(msg_id)
-                        otp = extract_otp(item.get("message", ""), phone_number)
+                        otp = extract_otp(item.get("message", ""), matched_num)
                         if otp is None:
                             continue
-                        new_bal = update_firebase_balance(chat_id, 0.40)
+                        uid_str = str(chat_id)
+                        new_bal = update_firebase_balance(uid_str, OTP_PRICE)
                         received_otps[chat_id] = otp
                         text = (
                             "╔════════════════════╗\n"
-                            f"    ➤ {phone_number} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
+                            f"    ➤ {matched_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
                             "╚════════════════════╝\n"
-                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +0.40 𝚃𝙺"
+                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +{OTP_PRICE:.2f} 𝚃𝙺"
                         )
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
@@ -800,21 +867,27 @@ def auto_check_otp(chat_id, phone_number, search_msg_id=None):
         except Exception:
             time.sleep(2)
 
-# ===================== NUMBER PROCESSING =====================
+# ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
     if rid is None:
         rid = user_ranges.get(chat_id) or message.text
+
+    loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
         try:
-            bot.edit_message_text("⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING...", chat_id, edit_msg.message_id)
+            bot.edit_message_text(loading_text, chat_id, edit_msg.message_id)
             status_id = edit_msg.message_id
         except Exception:
-            status_id = bot.send_message(chat_id, "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING...").message_id
+            status_id = bot.send_message(chat_id, loading_text).message_id
     else:
-        status_id = bot.send_message(chat_id, "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING...").message_id
+        status_id = bot.send_message(chat_id, loading_text).message_id
 
+    # ✅ ২টা নাম্বার নাও
+    nums      = []
+    countries = []
     max_retries = 5
+
     for attempt in range(max_retries):
         try:
             r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
@@ -822,32 +895,10 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             if data.get("meta", {}).get("code") == 200:
                 full_num = str(data["data"]["full_number"]).replace("+", "")
                 country  = data["data"].get("country", "Unknown")
-                otp_running[chat_id]    = False
-                strd_running[chat_id]   = False
-                time.sleep(0.1)
-                user_numbers[chat_id]   = full_num
-                user_countries[chat_id] = country
-                user_ranges[chat_id]    = rid
-                user_service[chat_id]   = service_name
-                received_otps[chat_id]  = None
-                used_otps[chat_id]      = []
-                back_cb  = f"back_to_country_{service_name}" if service_name in FIXED_SERVICES else "back_to_services"
-                kb       = number_assigned_markup(full_num, back_cb)
-                msg_text = (
-                    "✅ Number Assigned !\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"🟢 Country : {get_flag(country)} {country}\n\n"
-                    f"📞 Number : {full_num}\n\n"
-                    f"🌺 Service : {service_name}\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    "⏳ WAITING FOR OTP..."
-                )
-                try:
-                    bot.edit_message_text(msg_text, chat_id, status_id, reply_markup=kb)
-                except Exception:
-                    bot.send_message(chat_id, msg_text, reply_markup=kb)
-                threading.Thread(target=auto_check_otp, args=(chat_id, full_num), daemon=True).start()
-                return
+                if full_num not in nums:
+                    nums.append(full_num)
+                    countries.append(country)
+                break
             if attempt < max_retries - 1:
                 try:
                     bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt + 2}/{max_retries})", chat_id, status_id)
@@ -857,10 +908,70 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
         except Exception:
             if attempt < max_retries - 1:
                 time.sleep(3)
+
+    if not nums:
+        try:
+            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।", chat_id, status_id, reply_markup=try_again_markup())
+        except Exception:
+            pass
+        return
+
+    # ২য় নাম্বার নাও
+    for attempt in range(3):
+        try:
+            r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
+            data = r.json()
+            if data.get("meta", {}).get("code") == 200:
+                full_num2 = str(data["data"]["full_number"]).replace("+", "")
+                country2  = data["data"].get("country", "Unknown")
+                if full_num2 not in nums:
+                    nums.append(full_num2)
+                    countries.append(country2)
+                break
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+
+    # State সেট করো
+    otp_running[chat_id]    = False
+    strd_running[chat_id]   = False
+    time.sleep(0.1)
+    user_numbers[chat_id]   = nums
+    user_countries[chat_id] = countries
+    user_ranges[chat_id]    = rid
+    user_service[chat_id]   = service_name
+    received_otps[chat_id]  = None
+    used_otps[chat_id]      = []
+
+    back_cb      = f"back_to_country_{service_name}" if service_name in FIXED_SERVICES else "back_to_services"
+    country_show = countries[0] if countries else "Unknown"
+    flag         = get_flag(country_show)
+
+    # ✅ শুধু "WAITING FOR OTP..." + নাম্বার বাটন + country/service বাটন
+    msg_text = "⏳ WAITING FOR OTP..."
+    kb = build_inline_keyboard(
+        # নাম্বার বাটনগুলো
+        [[make_button(f"{get_flag(countries[i] if i < len(countries) else '')}  +{num}", style="primary", copy_text_val=f"+{num}")] for i, num in enumerate(nums)]
+        +
+        # country আর service আলাদা বাটন
+        [[make_button(f"{flag} {country_show}", callback_data="noop", style="primary"),
+          make_button(f"📲 {service_name.upper()}", callback_data="noop", style="primary")]]
+        +
+        [
+            [
+                make_button("🔄 Change Number", callback_data="change_num", style="primary"),
+                make_button("🔐 OTP GROUP",     url=GROUP_URL,              style="primary"),
+            ],
+            [make_button("🔙 BACK", callback_data=back_cb, style="danger")],
+        ]
+    )
+
     try:
-        bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।", chat_id, status_id, reply_markup=try_again_markup())
+        bot.edit_message_text(msg_text, chat_id, status_id, reply_markup=kb)
     except Exception:
-        pass
+        bot.send_message(chat_id, msg_text, reply_markup=kb)
+
+    threading.Thread(target=auto_check_otp, args=(chat_id, list(nums)), daemon=True).start()
 
 # ===================== TEXT HANDLER =====================
 @safe_execute
@@ -877,7 +988,6 @@ def handle_text(message):
 
     txt = message.text
 
-    # ========== ADMIN PANEL MULTI-STEP ==========
     if uid in admin_state:
         handle_admin_state(message, uid, txt)
         return
@@ -887,9 +997,7 @@ def handle_text(message):
             return
         bot.send_message(
             message.chat.id,
-            "╔════════════════════╗\n"
-            "      ⚙️ ADMIN PANEL\n"
-            "╚════════════════════╝",
+            "╔════════════════════╗\n      ⚙️ ADMIN PANEL\n╚════════════════════╝",
             reply_markup=admin_panel_markup()
         )
         return
@@ -916,34 +1024,43 @@ def handle_text(message):
         bot.register_next_step_handler(msg, process_2fa)
 
     elif txt == "👤 PROFILE":
-        balance  = get_firebase_balance(uid)
+        balance   = get_firebase_balance(uid)
+        today_str = str(date.today())
+        if today_date.get(uid) != today_str:
+            t_earn  = 0.0
+            t_count = 0
+        else:
+            t_earn  = today_earn.get(uid, 0.0)
+            t_count = today_otp_count.get(uid, 0)
         msg_text = (
-            "╔════════════════════╗\n"
-            "      👤 𝚄𝚂𝙴𝚁 𝙿𝚁𝙾𝙵𝙸𝙻𝙴\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            f"🆔 𝙸𝙳 : {uid}\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 : {balance:.2f} TK\n"
-            "╚════════════════════╝\n"
-            "╔════════════════════╗\n"
-            "✅ 𝚂𝚃𝙰𝚃𝚄𝚂 : ACTIVE\n"
-            "╚════════════════════╝"
+            " 👤  𝐘𝐎𝐔𝐑 𝐏𝐑𝐎𝐅𝐈𝐋𝐄\n\n"
+            f"💸 𝐓𝐨𝐝𝐚𝐲 𝐄𝐚𝐫𝐧 : {t_earn:.2f} 𝐓𝐊\n"
+            f"📩 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 : {t_count}\n\n"
+            f"🆔 𝐈𝐃 : {uid}\n"
+            f"💰 𝐁𝐚𝐥𝐚𝐧𝐜𝐞 : {balance:.2f} 𝐓𝐊\n"
+            "✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐀𝐂𝐓𝐈𝐕𝐄"
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=profile_markup())
+
+    elif txt == "💳 BALANCE":
+        balance  = get_firebase_balance(uid)
+        msg_text = (
+            "😎\n"
+            "👚\n"
+            "👖\n\n"
+            f"💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: {balance:.2f} TK"
+        )
+        bot.send_message(message.chat.id, msg_text, reply_markup=balance_markup(balance))
 
     elif txt == "👑 ADMIN SUPPORT":
         bot.send_message(message.chat.id, "💬 যেকোনো সমস্যার জন্য এডমিনকে মেসেজ দিন।", reply_markup=admin_support_markup())
 
 # ===================== ADMIN PANEL MULTI-STEP =====================
 def handle_admin_state(message, uid, txt):
-    """Admin panel multi-step conversation handler"""
     state = admin_state.get(uid, {})
     step  = state.get("step")
     cid   = message.chat.id
 
-    # ---- Add Country ----
     if step == "add_country_name":
         admin_state[uid]["country"] = txt
         admin_state[uid]["step"]    = "add_country_rid"
@@ -965,24 +1082,15 @@ def handle_admin_state(message, uid, txt):
         admin_state.pop(uid, None)
         bot.send_message(
             cid,
-            f"✅ সফলভাবে এড হয়েছে!\n"
-            f"🌍 Service : {service_name}\n"
-            f"🌏 Country : {country_name}\n"
-            f"🔢 Range   : {rid}",
+            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
             reply_markup=admin_panel_markup()
         )
 
-    # ---- User Message ----
     elif step == "user_message_text":
         admin_state[uid]["msg_text"] = txt
         admin_state[uid]["step"]     = "user_message_confirm"
-        bot.send_message(
-            cid,
-            f"📨 পাঠাবেন এই মেসেজটি:\n\n{txt}\n\nনিশ্চিত করুন:",
-            reply_markup=admin_confirm_send_markup()
-        )
+        bot.send_message(cid, f"📨 পাঠাবেন এই মেসেজটি:\n\n{txt}\n\nনিশ্চিত করুন:", reply_markup=admin_confirm_send_markup())
 
-    # ---- Add Money ----
     elif step == "add_money_uid":
         admin_state[uid]["target_uid"] = txt
         admin_state[uid]["step"]       = "add_money_amount"
@@ -995,11 +1103,7 @@ def handle_admin_state(message, uid, txt):
             target_uid = state.get("target_uid")
             new_bal    = update_firebase_balance(target_uid, amount)
             admin_state.pop(uid, None)
-            bot.send_message(
-                cid,
-                f"✅ টাকা এড হয়েছে!\n👤 ID: {target_uid}\n💰 যোগ: {amount} TK\n🏦 মোট: {new_bal:.2f} TK",
-                reply_markup=admin_panel_markup()
-            )
+            bot.send_message(cid, f"✅ টাকা এড হয়েছে!\n👤 ID: {target_uid}\n💰 যোগ: {amount} TK\n🏦 মোট: {new_bal:.2f} TK", reply_markup=admin_panel_markup())
             try:
                 bot.send_message(target_uid, f"💰 আপনার একাউন্টে {amount} TK যোগ হয়েছে!\n🏦 মোট ব্যালেন্স: {new_bal:.2f} TK")
             except Exception:
@@ -1007,7 +1111,6 @@ def handle_admin_state(message, uid, txt):
         except Exception:
             bot.send_message(cid, "❌ সংখ্যা দিন।", reply_markup=admin_cancel_markup())
 
-    # ---- Money Clear ----
     elif step == "money_clear_uid":
         admin_state[uid]["target_uid"] = txt
         admin_state[uid]["step"]       = "money_clear_amount"
@@ -1029,6 +1132,41 @@ def handle_admin_state(message, uid, txt):
             bot.send_message(cid, msg_out, reply_markup=admin_panel_markup())
         except Exception:
             bot.send_message(cid, "❌ সংখ্যা বা 'all' দিন।", reply_markup=admin_cancel_markup())
+
+    elif step == "withdraw_number":
+        withdraw_data[uid]["number"] = txt
+        admin_state[uid]["step"]     = "withdraw_amount"
+        msg = bot.send_message(
+            cid,
+            f"💵 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝐚𝐦𝐨𝐮𝐧𝐭:",
+            reply_markup=withdraw_cancel_markup()
+        )
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+
+    elif step == "withdraw_amount":
+        try:
+            amount = int(txt)
+            if amount < 50:
+                bot.send_message(cid, "❌ Minimum 50 TK!", reply_markup=withdraw_cancel_markup()); return
+            withdraw_data[uid]["amount"] = amount
+            method = withdraw_data[uid].get("method", "")
+            number = withdraw_data[uid].get("number", "")
+            admin_state.pop(uid, None)
+            # Confirm message
+            bot.send_message(
+                cid,
+                "ভালো করে দেখুন\n"
+                "আপনার নাম্বার ঠিক আছে কি না\n"
+                "ভুল হলে এডমিন দায়ী নয়\n"
+                "সব কিছু ঠিক হবে confirm করুন\n\n"
+                f"📱 {method.upper()} : {number}\n"
+                f"💰 Amount : {amount} TK",
+                reply_markup=withdraw_confirm_markup()
+            )
+            # temp save
+            withdraw_data[uid]["amount"] = amount
+        except Exception:
+            bot.send_message(cid, "❌ সংখ্যা দিন।", reply_markup=withdraw_cancel_markup())
 
     else:
         admin_state.pop(uid, None)
@@ -1059,10 +1197,9 @@ def handle_query(call):
     register_user(uid, user_name)
     user_names[uid_str] = user_name
 
-    # ========== ADMIN PANEL CALLBACKS ==========
+    # ========== ADMIN PANEL ==========
     if call.data == "adm_close":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         admin_state.pop(uid_str, None)
         try:
             bot.edit_message_text("✅ Admin Panel বন্ধ।", cid, call.message.message_id)
@@ -1078,47 +1215,35 @@ def handle_query(call):
         bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
 
     elif call.data == "adm_add_country":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         try:
-            bot.edit_message_text(
-                "🌍 কোন সার্ভিসে দেশ এড করবেন?",
-                cid, call.message.message_id,
-                reply_markup=admin_service_select_markup("addcountry")
-            )
+            bot.edit_message_text("🌍 কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
         except Exception:
             pass
 
     elif call.data.startswith("adm_svc_addcountry_"):
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         service_name = call.data.replace("adm_svc_addcountry_", "")
         admin_state[uid_str] = {"step": "add_country_name", "service": service_name}
         try:
-            bot.edit_message_text(
-                f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:",
-                cid, call.message.message_id,
-                reply_markup=admin_cancel_markup()
-            )
+            bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
             pass
         msg = bot.send_message(cid, f"📝 {service_name} — দেশের নাম লিখুন:")
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_user_message":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         admin_state[uid_str] = {"step": "user_message_text"}
         try:
-            bot.edit_message_text("📨 ইউজারদের কী মেসেজ পাঠাতে চান? লিখুন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
+            bot.edit_message_text("📨 ইউজারদের কী মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
             pass
         msg = bot.send_message(cid, "✏️ মেসেজ লিখুন:")
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_confirm_send":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         msg_text = admin_state.get(uid_str, {}).get("msg_text", "")
         admin_state.pop(uid_str, None)
         load_all_users_from_firebase()
@@ -1135,8 +1260,7 @@ def handle_query(call):
         bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
 
     elif call.data == "adm_add_money":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         admin_state[uid_str] = {"step": "add_money_uid"}
         try:
             bot.edit_message_text("👤 ইউজার UID দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
@@ -1146,8 +1270,7 @@ def handle_query(call):
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_money_clear":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         admin_state[uid_str] = {"step": "money_clear_uid"}
         try:
             bot.edit_message_text("👤 কোন ইউজারের টাকা কাটবেন? UID দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
@@ -1157,21 +1280,18 @@ def handle_query(call):
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_user_count":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         load_all_users_from_firebase()
         try:
             bot.edit_message_text(
-                f"👥 মোট ইউজার: {len(users)}",
-                cid, call.message.message_id,
+                f"👥 মোট ইউজার: {len(users)}", cid, call.message.message_id,
                 reply_markup=build_inline_keyboard([[make_button("🔙 Back", callback_data="adm_back", style="primary")]])
             )
         except Exception:
             pass
 
     elif call.data == "adm_all_money":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         load_all_users_from_firebase()
         info  = "╔════════════════════╗\n📊 ALL USER MONEY\n╚════════════════════╝\n\n"
         total = 0.0
@@ -1190,8 +1310,7 @@ def handle_query(call):
         bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
 
     elif call.data == "adm_back":
-        if not is_admin(uid):
-            return
+        if not is_admin(uid): return
         try:
             bot.edit_message_text("⚙️ ADMIN PANEL", cid, call.message.message_id, reply_markup=admin_panel_markup())
         except Exception:
@@ -1222,6 +1341,38 @@ def handle_query(call):
             pass
         bot.send_message(cid, welcome_text, reply_markup=main_markup(uid_str))
 
+    elif call.data == "back_profile":
+        balance   = get_firebase_balance(uid_str)
+        today_str = str(date.today())
+        if today_date.get(uid_str) != today_str:
+            t_earn = 0.0; t_count = 0
+        else:
+            t_earn  = today_earn.get(uid_str, 0.0)
+            t_count = today_otp_count.get(uid_str, 0)
+        msg_text = (
+            " 👤  𝐘𝐎𝐔𝐑 𝐏𝐑𝐎𝐅𝐈𝐋𝐄\n\n"
+            f"💸 𝐓𝐨𝐝𝐚𝐲 𝐄𝐚𝐫𝐧 : {t_earn:.2f} 𝐓𝐊\n"
+            f"📩 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 : {t_count}\n\n"
+            f"🆔 𝐈𝐃 : {uid_str}\n"
+            f"💰 𝐁𝐚𝐥𝐚𝐧𝐜𝐞 : {balance:.2f} 𝐓𝐊\n"
+            "✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐀𝐂𝐓𝐈𝐕𝐄"
+        )
+        try:
+            bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=profile_markup())
+        except Exception:
+            bot.send_message(cid, msg_text, reply_markup=profile_markup())
+
+    elif call.data == "back_balance":
+        balance  = get_firebase_balance(uid_str)
+        msg_text = (
+            "😎\n👚\n👖\n\n"
+            f"💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: {balance:.2f} TK"
+        )
+        try:
+            bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=balance_markup(balance))
+        except Exception:
+            bot.send_message(cid, msg_text, reply_markup=balance_markup(balance))
+
     elif call.data == "back_to_services":
         try:
             bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
@@ -1251,8 +1402,7 @@ def handle_query(call):
     elif call.data.startswith("ct_"):
         inner = call.data[3:]
         sep   = inner.rfind("__")
-        if sep == -1:
-            return
+        if sep == -1: return
         service_name = inner[:sep]
         idx          = int(inner[sep + 2:])
         if service_name not in FIXED_SERVICES:
@@ -1269,8 +1419,7 @@ def handle_query(call):
     elif call.data == "change_num":
         rid          = user_ranges.get(cid)
         service_name = user_service.get(cid, "Unknown")
-        if not rid:
-            return
+        if not rid: return
         fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
         process_number(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
 
@@ -1280,41 +1429,83 @@ def handle_query(call):
         if received_otps.get(cid):
             bot.send_message(cid, "╔════════════════════╗\n      ✦ OTP RCV ✦\n╚════════════════════╝\n\n➤ OTP ➤ Already Received ✅")
         else:
-            user_num   = user_numbers.get(cid)
+            nums       = user_numbers.get(cid, [])
             search_msg = bot.send_message(cid, "🔍 OTP SEARCHING...\n⏳ Please Wait...")
-            threading.Thread(target=auto_check_otp, args=(cid, user_num, search_msg.message_id), daemon=True).start()
+            threading.Thread(target=auto_check_otp, args=(cid, list(nums), search_msg.message_id), daemon=True).start()
 
     elif call.data == "otp_price":
-        price_text = "💎 𝚂𝚃𝙰𝚃𝚄𝚂 💎\n\n📲 𝚃𝙾𝙳𝙰𝚈 𝙾𝚃𝙿 𝙿𝚁𝙸𝙲𝙴 💰 𝟶.𝟺𝟶৳ 🔥\n\n✨ 𝙵𝙰𝚂𝚃 • 𝚂𝙴𝙲𝚄𝚁𝙴 • 𝚃𝚁𝚄𝚂𝚃𝙴𝙳 🚀"
         try:
-            bot.edit_message_text(price_text, cid, call.message.message_id, reply_markup=otp_price_markup())
+            bot.edit_message_text(
+                f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+                cid, call.message.message_id,
+                reply_markup=otp_price_markup()
+            )
         except Exception:
-            bot.send_message(cid, price_text, reply_markup=otp_price_markup())
-
-    elif call.data == "back_profile":
-        try:
-            bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
-        except Exception:
-            bot.send_message(cid, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
-
-    elif call.data == "main_get_number":
-        try:
-            bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
-        except Exception:
-            bot.send_message(cid, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
+            bot.send_message(cid, f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊", reply_markup=otp_price_markup())
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
         if balance < 50:
             bot.answer_callback_query(call.id, "❌ Min 50 TK!"); return
-        bot.edit_message_text("🏦 SELECT PAYMENT METHOD", cid, call.message.message_id, reply_markup=payment_method_markup())
+        try:
+            bot.edit_message_text(
+                f"🏦 Select method\n\n💰 আপনার ব্যালেন্স: {balance:.2f} TK",
+                cid, call.message.message_id,
+                reply_markup=withdraw_select_method_markup(balance)
+            )
+        except Exception:
+            bot.send_message(cid, f"🏦 Select method\n\n💰 আপনার ব্যালেন্স: {balance:.2f} TK", reply_markup=withdraw_select_method_markup(balance))
 
     elif call.data in ["bkash", "rocket"]:
         withdraw_data[uid] = {"method": call.data.capitalize()}
-        msg = bot.send_message(cid, f"📱 ENTER YOUR {call.data.upper()} NUMBER")
-        bot.register_next_step_handler(msg, get_withdraw_number)
+        admin_state[uid_str] = {"step": "withdraw_number"}
+        try:
+            bot.edit_message_text(
+                f"📱 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 {call.data.capitalize()} 𝐧𝐮𝐦𝐛𝐞𝐫:",
+                cid, call.message.message_id,
+                reply_markup=withdraw_cancel_markup()
+            )
+        except Exception:
+            pass
+        msg = bot.send_message(cid, f"📱 আপনার {call.data.upper()} নাম্বার দিন:")
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
+
+    elif call.data == "confirm_withdraw":
+        method = withdraw_data.get(uid, {}).get("method", "")
+        number = withdraw_data.get(uid, {}).get("number", "")
+        amount = withdraw_data.get(uid, {}).get("amount", 0)
+        uname  = user_names.get(uid_str, "Unknown")
+        withdraw_status[uid_str] = {
+            "status": "pending", "amount": amount,
+            "method": method, "number": number, "msg_id": None
+        }
+        # User কে pending message
+        pending_text = (
+            f"⏳ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐩𝐞𝐧𝐝𝐢𝐧𝐠.\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "👨‍💼 𝐏𝐥𝐞𝐚𝐬𝐞 𝐰𝐚𝐢𝐭 𝐟𝐨𝐫 𝐚𝐧 𝐚𝐝𝐦𝐢𝐧 𝐭𝐨 𝐫𝐞𝐯𝐢𝐞𝐰 𝐢𝐭.\n\n"
+            "📋 𝐂𝐡𝐞𝐜𝐤 𝐲𝐨𝐮𝐫 𝐬𝐭𝐚𝐭𝐮𝐬."
+        )
+        try:
+            sent = bot.edit_message_text(pending_text, cid, call.message.message_id, reply_markup=withdraw_check_markup())
+            withdraw_status[uid_str]["msg_id"] = sent.message_id if sent else None
+        except Exception:
+            sent = bot.send_message(cid, pending_text, reply_markup=withdraw_check_markup())
+            withdraw_status[uid_str]["msg_id"] = sent.message_id if sent else None
+
+        # Admin কে পাঠাও
+        admin_text = (
+            "【💸 𝐍𝐄𝐖 𝐏𝐀𝐘𝐌𝐄𝐍𝐓】\n\n"
+            f"➤ 𝐔𝐬𝐞𝐫 : @{uname}\n"
+            f"➤ 𝐈𝐃 : {uid_str}\n"
+            f"➤ 𝐀𝐦𝐨𝐮𝐧𝐭 : {amount} TK\n"
+            f"➤ {method} : {number}"
+        )
+        bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_approve_markup(uid))
 
     elif call.data == "cancel_withdraw":
+        admin_state.pop(uid_str, None)
         bot.answer_callback_query(call.id, "❌ Withdraw বাতিল।")
         try:
             bot.edit_message_text("❌ Withdraw বাতিল করা হয়েছে।", cid, call.message.message_id)
@@ -1322,23 +1513,81 @@ def handle_query(call):
             pass
 
     elif call.data == "withdraw_status":
-        status_info = withdraw_status.get(uid_str)
-        if not status_info:
-            bot.answer_callback_query(call.id, "❌ কোনো withdraw request নেই।"); return
-        st     = status_info.get("status", "pending")
-        amount = status_info.get("amount", 0)
-        method = status_info.get("method", "")
-        number = status_info.get("number", "")
-        icons  = {"pending": "⏳", "approved": "✅", "rejected": "❌"}
-        titles = {"pending": "𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙿𝙴𝙽𝙳𝙸𝙽𝙶", "approved": "𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚂𝚄𝙲𝙲𝙴𝚂𝚂!", "rejected": "𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝙹𝙴𝙲𝚃𝙴𝙳"}
-        status_text = (
-            f"╔════════════════════╗\n{icons.get(st,'⏳')} {titles.get(st,'')}\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n👤 𝙸𝙳 : {uid_str}\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n📱 {method.upper()} : {number}\n╚════════════════════╝"
-        )
+        info = withdraw_status.get(uid_str)
+        if not info:
+            bot.answer_callback_query(call.id, "❌ কোনো request নেই।"); return
+        st     = info.get("status", "pending")
+        amount = info.get("amount", 0)
+        number = info.get("number", "")
+        if st == "pending":
+            status_text = (
+                f"⏳ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐩𝐞𝐧𝐝𝐢𝐧𝐠.\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+                "⏳ অপেক্ষা করুন, আপনার টাকা পাবেন।\n\n"
+                "⏳ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐏𝐞𝐧𝐝𝐢𝐧𝐠"
+            )
+        elif st == "approved":
+            status_text = (
+                f"✅ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+                "🎉 𝐆𝐨𝐨𝐝! 𝐍𝐢𝐜𝐞 𝐰𝐨𝐫𝐤. 𝐊𝐞𝐞𝐩 𝐢𝐭 𝐮𝐩! 💖\n\n"
+                "✅ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞"
+            )
+        else:
+            status_text = (
+                f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
+            )
         bot.answer_callback_query(call.id)
-        bot.send_message(cid, status_text)
+        try:
+            bot.edit_message_text(status_text, cid, call.message.message_id, reply_markup=withdraw_refresh_markup())
+        except Exception:
+            bot.send_message(cid, status_text, reply_markup=withdraw_refresh_markup())
+
+    elif call.data == "withdraw_refresh":
+        # status চেক করে message edit করে
+        info = withdraw_status.get(uid_str)
+        if not info:
+            bot.answer_callback_query(call.id, "❌ কোনো request নেই।"); return
+        st     = info.get("status", "pending")
+        amount = info.get("amount", 0)
+        number = info.get("number", "")
+        if st == "pending":
+            status_text = (
+                f"⏳ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐩𝐞𝐧𝐝𝐢𝐧𝐠.\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+                "⏳ অপেক্ষা করুন, আপনার টাকা পাবেন।\n\n"
+                "⏳ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐏𝐞𝐧𝐝𝐢𝐧𝐠"
+            )
+        elif st == "approved":
+            status_text = (
+                f"✅ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+                "🎉 𝐆𝐨𝐨𝐝! 𝐍𝐢𝐜𝐞 𝐰𝐨𝐫𝐤. 𝐊𝐞𝐞𝐩 𝐢𝐭 𝐮𝐩! 💖\n\n"
+                "✅ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞"
+            )
+        else:
+            status_text = (
+                f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
+                f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+                "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
+            )
+        try:
+            bot.edit_message_text(status_text, cid, call.message.message_id, reply_markup=withdraw_refresh_markup())
+            bot.answer_callback_query(call.id, "🔄 Refreshed!")
+        except Exception:
+            bot.answer_callback_query(call.id)
 
     elif call.data.startswith("approve_"):
         if not is_admin(uid):
@@ -1349,16 +1598,31 @@ def handle_query(call):
         method     = w.get("method", "")
         number     = w.get("number", "")
         update_firebase_balance(target_uid, -amount)
-        withdraw_status[target_uid] = {"status": "approved", "amount": amount, "method": method, "number": number}
+        withdraw_status[target_uid] = {
+            "status": "approved", "amount": amount,
+            "method": method, "number": number
+        }
+        # ইউজারের status message edit করো
+        info   = withdraw_status.get(target_uid, {})
+        msg_id = info.get("msg_id")
+        approved_text = (
+            f"✅ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+            "🎉 𝐆𝐨𝐨𝐝! 𝐍𝐢𝐜𝐞 𝐰𝐨𝐫𝐤. 𝐊𝐞𝐞𝐩 𝐢𝐭 𝐮𝐩! 💖\n\n"
+            "✅ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞"
+        )
         try:
-            bot.send_message(target_uid, (
-                "╔════════════════════╗\n✅ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚂𝚄𝙲𝙲𝙴𝚂𝚂!\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n👤 𝙸𝙳 : {target_uid}\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n📱 {method.upper()} : {number}\n╚════════════════════╝"
-            ))
+            if msg_id:
+                bot.edit_message_text(approved_text, int(target_uid), msg_id)
+            else:
+                bot.send_message(target_uid, approved_text)
         except Exception:
-            pass
+            try:
+                bot.send_message(target_uid, approved_text)
+            except Exception:
+                pass
         bot.edit_message_text("✅ Approved", cid, call.message.message_id)
 
     elif call.data.startswith("reject_"):
@@ -1369,50 +1633,29 @@ def handle_query(call):
         amount     = w.get("amount", 0)
         method     = w.get("method", "")
         number     = w.get("number", "")
-        withdraw_status[target_uid] = {"status": "rejected", "amount": amount, "method": method, "number": number}
-        try:
-            bot.send_message(target_uid, (
-                "╔════════════════════╗\n❌ 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝙹𝙴𝙲𝚃𝙴𝙳\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n👤 𝙸𝙳 : {target_uid}\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n╚════════════════════╝\n"
-                f"╔════════════════════╗\n📱 {method.upper()} : {number}\n╚════════════════════╝"
-            ))
-        except Exception:
-            pass
-        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
-
-# ===================== WITHDRAW =====================
-def get_withdraw_number(message):
-    withdraw_data[message.from_user.id]["number"] = message.text
-    msg = bot.send_message(message.chat.id, "💰 ENTER AMOUNT (MIN 50 TK)")
-    bot.register_next_step_handler(msg, get_withdraw_amount)
-
-def get_withdraw_amount(message):
-    try:
-        amount = int(message.text)
-        if amount < 50:
-            bot.send_message(message.chat.id, "❌ Minimum 50 TK!"); return
-        uid    = message.from_user.id
-        withdraw_data[uid]["amount"] = amount
-        method = withdraw_data[uid]['method']
-        number = withdraw_data[uid]['number']
-        withdraw_status[str(uid)] = {"status": "pending", "amount": amount, "method": method, "number": number}
-        user_text = (
-            "╔════════════════════╗\n⏳ 𝚈𝙾𝚄𝚁 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝙸𝚂 𝙿𝙴𝙽𝙳𝙸𝙽𝙶\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n👤 𝙸𝙳 : {uid}\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n📱 {method.upper()} : {number}\n╚════════════════════╝\n"
-            "⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝 𝚏𝚘𝚛 𝚊𝚗 𝙰𝚍𝚖𝚒𝚗 𝚝𝚘 𝙰𝚙𝚙𝚛𝚘𝚟𝚎 𝚈𝚘𝚞𝚛 𝚁𝚎𝚖𝚞𝚎𝚜𝚝"
+        withdraw_status[target_uid] = {
+            "status": "rejected", "amount": amount,
+            "method": method, "number": number
+        }
+        info   = withdraw_status.get(target_uid, {})
+        msg_id = info.get("msg_id")
+        rejected_text = (
+            f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
         )
-        bot.send_message(message.chat.id, user_text, reply_markup=withdraw_status_markup())
-        bot.send_message(ADMIN_ID, (
-            "╔════════════════════╗\n💸 𝙽𝙴𝚆 𝙿𝙰𝚈𝙼𝙴𝙽𝚃 𝚁𝙴𝚀𝚄𝙴𝚂𝚃\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n👤 𝙸𝙳 : {uid}\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n💰 𝙰𝙼𝙾𝚄𝙽𝚃 : {amount} TK\n╚════════════════════╝\n"
-            f"╔════════════════════╗\n📱 {method.upper()} : {number}\n╚════════════════════╝"
-        ), reply_markup=admin_approve_markup(uid))
-    except Exception:
-        bot.send_message(message.chat.id, "❌ Error! সংখ্যা দিন।")
+        try:
+            if msg_id:
+                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
+            else:
+                bot.send_message(target_uid, rejected_text)
+        except Exception:
+            try:
+                bot.send_message(target_uid, rejected_text)
+            except Exception:
+                pass
+        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
 
 # ===================== BOT RUN =====================
 def run_bot():
