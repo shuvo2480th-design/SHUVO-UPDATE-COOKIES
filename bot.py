@@ -192,12 +192,12 @@ def register_user(uid, name="User"):
 def load_all_users_from_firebase():
     data = _fb_get("/users")
     if isinstance(data, dict):
-        for uid in data:
+        for uid, val in data.items():
             if uid not in users:
                 users[uid] = {"balance": 0}
-            name = _fb_get(f"/users/{uid}/name")
-            if name:
-                user_names[uid] = name
+            # name একই data থেকে নাও — আলাদা request না
+            if isinstance(val, dict) and val.get("name"):
+                user_names[uid] = val["name"]
 
 def load_countries_from_firebase():
     for sname in FIXED_SERVICES:
@@ -693,7 +693,7 @@ def broadcast(message):
     count = failed = 0
     for uid in list(users.keys()):
         try:
-            bot.send_message(uid, text); count += 1; time.sleep(0.05)
+            bot.send_message(int(uid), text); count += 1; time.sleep(0.05)
         except Exception:
             failed += 1
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
@@ -1260,7 +1260,7 @@ def handle_query(call):
         count = failed = 0
         for u in list(users.keys()):
             try:
-                bot.send_message(u, msg_text); count += 1; time.sleep(0.05)
+                bot.send_message(int(u), msg_text); count += 1; time.sleep(0.05)
             except Exception:
                 failed += 1
         try:
