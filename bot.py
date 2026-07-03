@@ -416,8 +416,8 @@ def service_info_markup(service_name, country, back_cb):
     """Country + Service — আলাদা নীল বাটন"""
     flag = get_flag(country)
     return build_inline_keyboard([
-        [make_button(f"{flag} {country}", callback_data="noop", style="primary")],
-        [make_button(f"📲 {service_name.upper()}", callback_data="noop", style="primary")],
+        [make_button(f"{flag} {country}", callback_data="noop", style="success")],
+        [make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")],
         [make_button("🔙 BACK", callback_data=back_cb, style="danger")],
     ])
 
@@ -961,8 +961,8 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
         [[make_button(f"{get_flag(countries[i] if i < len(countries) else '')}  +{num}", style="primary", copy_text_val=f"+{num}")] for i, num in enumerate(nums)]
         +
         # country আর service আলাদা বাটন
-        [[make_button(f"{flag} {country_show}", callback_data="noop", style="primary"),
-          make_button(f"📲 {service_name.upper()}", callback_data="noop", style="primary")]]
+        [[make_button(f"{flag} {country_show}", callback_data="noop", style="success"),
+          make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")]]
         +
         [
             [
@@ -995,7 +995,7 @@ def handle_text(message):
 
     txt = message.text
 
-    if uid in admin_state:
+    if uid in admin_state and admin_state[uid].get("step"):
         handle_admin_state(message, uid, txt)
         return
 
@@ -1217,6 +1217,7 @@ def handle_query(call):
 
     elif call.data == "adm_cancel":
         admin_state.pop(uid_str, None)
+        withdraw_data.pop(uid, None)
         try:
             bot.edit_message_text("❌ বাতিল করা হয়েছে।", cid, call.message.message_id)
         except Exception:
@@ -1492,14 +1493,16 @@ def handle_query(call):
         withdraw_data[uid] = {"method": method_name}
         admin_state[uid_str] = {"step": "withdraw_number"}
         enter_text = f"📱 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 {method_name} 𝐧𝐮𝐦𝐛𝐞𝐫:"
+        # ✅ inline message edit (no reply_markup needed for input)
         try:
-            sent = bot.edit_message_text(
+            bot.edit_message_text(
                 enter_text, cid, call.message.message_id,
                 reply_markup=withdraw_cancel_markup()
             )
         except Exception:
-            sent = bot.send_message(cid, enter_text, reply_markup=withdraw_cancel_markup())
-        # ✅ শুধু এই একটা মেসেজেই next step — আলাদা কোনো মেসেজ নেই
+            pass
+        # ✅ নতুন message পাঠাও যেটায় next_step register করা যাবে
+        sent = bot.send_message(cid, "✏️ নাম্বার টাইপ করুন:")
         bot.register_next_step_handler(sent, lambda m, u=uid_str: handle_admin_state(m, u, m.text))
 
     elif call.data == "confirm_withdraw":
@@ -1507,6 +1510,8 @@ def handle_query(call):
         number = withdraw_data.get(uid, {}).get("number", "")
         amount = withdraw_data.get(uid, {}).get("amount", 0)
         uname  = user_names.get(uid_str, "Unknown")
+        # ✅ admin_state clear করো
+        admin_state.pop(uid_str, None)
         withdraw_status[uid_str] = {
             "status": "pending", "amount": amount,
             "method": method, "number": number, "msg_id": None
@@ -1537,7 +1542,9 @@ def handle_query(call):
         bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_approve_markup(uid))
 
     elif call.data == "cancel_withdraw":
+        # ✅ admin_state পরিষ্কার করো যাতে অন্য বাটন কাজ করে
         admin_state.pop(uid_str, None)
+        withdraw_data.pop(uid, None)
         bot.answer_callback_query(call.id, "❌ Withdraw বাতিল।")
         try:
             bot.edit_message_text("❌ Withdraw বাতিল করা হয়েছে।", cid, call.message.message_id)
