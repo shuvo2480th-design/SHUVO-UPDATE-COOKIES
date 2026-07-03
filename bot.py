@@ -713,9 +713,16 @@ def strd_command(message):
 def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
     active_msg_id = search_msg_id
+    # ✅ init used sets
+    if chat_id not in used_otps:
+        used_otps[chat_id] = []
+    if chat_id not in global_used_otps:
+        global_used_otps[chat_id] = set()
     try:
         while strd_running.get(chat_id):
             current_nums = user_numbers.get(chat_id, [])
+            if not isinstance(current_nums, list):
+                current_nums = [current_nums] if current_nums else []
             if current_nums and current_nums != start_numbers:
                 start_numbers = list(current_nums)
                 try:
@@ -1015,11 +1022,8 @@ def handle_text(message):
     elif txt == "🔐 GET 2FA CODE":
         msg = bot.send_message(
             message.chat.id,
-            "🔐 আপনার 2FA Secret Key পাঠান\n\n"
-            "📌 কোথায় পাবেন:\n"
-            "• Facebook/Instagram → Settings → Security → Two-Factor Authentication → Authentication App → Setup Key\n"
-            "• WhatsApp → Settings → Account → Two-step verification → এর Secret Key\n\n"
-            "🔑 Example: JBSWY3DPEHPK3PXP"
+            "🔐 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝟐𝐅𝐀 𝐜𝐨𝐝𝐞.\n\n"
+            "🔑 𝐄𝐱𝐚𝐦𝐩𝐥𝐞: 𝐉𝐁𝐒𝐖𝐘𝟑𝐃𝐏𝐄𝐇𝐏𝐊𝟑𝐏𝐗𝐏"
         )
         bot.register_next_step_handler(msg, process_2fa)
 
@@ -1171,16 +1175,21 @@ def handle_admin_state(message, uid, txt):
     else:
         admin_state.pop(uid, None)
 
+# 2FA secret key store — per user
+user_2fa_keys = {}
+
 def process_2fa(message):
     secret_key = message.text.strip().replace(" ", "")
-    code       = _totp_generate(secret_key)
+    user_2fa_keys[message.chat.id] = secret_key
+    code = _totp_generate(secret_key)
     if code:
         remaining = 30 - (int(time.time()) % 30)
         bot.send_message(
             message.chat.id,
             f"🔐 YOUR 2FA CODE ✅\n\n🔑 Code : {code}\n⏳ Valid for : {remaining} seconds",
             reply_markup=build_inline_keyboard([
-                [make_button(code, style="success", copy_text_val=code)]
+                [make_button(code, style="success", copy_text_val=code)],
+                [make_button("🔄 Change", callback_data="refresh_2fa", style="primary")],
             ])
         )
     else:
@@ -1320,6 +1329,28 @@ def handle_query(call):
     elif call.data == "noop":
         bot.answer_callback_query(call.id)
 
+    elif call.data == "refresh_2fa":
+        # ✅ একই key দিয়ে নতুন OTP দেবে
+        secret_key = user_2fa_keys.get(cid)
+        if not secret_key:
+            bot.answer_callback_query(call.id, "❌ আগে 2FA Key দিন!")
+            return
+        code = _totp_generate(secret_key)
+        if code:
+            remaining = 30 - (int(time.time()) % 30)
+            try:
+                bot.edit_message_text(
+                    f"🔐 YOUR 2FA CODE ✅\n\n🔑 Code : {code}\n⏳ Valid for : {remaining} seconds",
+                    cid, call.message.message_id,
+                    reply_markup=build_inline_keyboard([
+                        [make_button(code, style="success", copy_text_val=code)],
+                        [make_button("🔄 Change", callback_data="refresh_2fa", style="primary")],
+                    ])
+                )
+            except Exception:
+                pass
+        bot.answer_callback_query(call.id, "✅ Refreshed!")
+
     elif call.data == "verify_join":
         if is_joined(uid):
             bot.answer_callback_query(call.id, "✅ You are verified!")
@@ -1457,18 +1488,19 @@ def handle_query(call):
             bot.send_message(cid, f"🏦 Select method\n\n💰 আপনার ব্যালেন্স: {balance:.2f} TK", reply_markup=withdraw_select_method_markup(balance))
 
     elif call.data in ["bkash", "rocket"]:
-        withdraw_data[uid] = {"method": call.data.capitalize()}
+        method_name = call.data.capitalize()
+        withdraw_data[uid] = {"method": method_name}
         admin_state[uid_str] = {"step": "withdraw_number"}
+        enter_text = f"📱 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 {method_name} 𝐧𝐮𝐦𝐛𝐞𝐫:"
         try:
-            bot.edit_message_text(
-                f"📱 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 {call.data.capitalize()} 𝐧𝐮𝐦𝐛𝐞𝐫:",
-                cid, call.message.message_id,
+            sent = bot.edit_message_text(
+                enter_text, cid, call.message.message_id,
                 reply_markup=withdraw_cancel_markup()
             )
         except Exception:
-            pass
-        msg = bot.send_message(cid, f"📱 আপনার {call.data.upper()} নাম্বার দিন:")
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
+            sent = bot.send_message(cid, enter_text, reply_markup=withdraw_cancel_markup())
+        # ✅ শুধু এই একটা মেসেজেই next step — আলাদা কোনো মেসেজ নেই
+        bot.register_next_step_handler(sent, lambda m, u=uid_str: handle_admin_state(m, u, m.text))
 
     elif call.data == "confirm_withdraw":
         method = withdraw_data.get(uid, {}).get("method", "")
