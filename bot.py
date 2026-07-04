@@ -498,18 +498,49 @@ def admin_panel_markup():
     return build_inline_keyboard([
         [
             make_button("🌍 Add Country",    callback_data="adm_add_country",  style="success"),
+            make_button("🗑️ Del Country",    callback_data="adm_del_country",  style="danger"),
+        ],
+        [
             make_button("📨 User Message",   callback_data="adm_user_message", style="primary"),
-        ],
-        [
             make_button("💰 Add Money",      callback_data="adm_add_money",    style="success"),
-            make_button("🗑️ Money Clear",    callback_data="adm_money_clear",  style="danger"),
         ],
         [
+            make_button("🗑️ Money Clear",    callback_data="adm_money_clear",  style="danger"),
             make_button("👥 User Count",     callback_data="adm_user_count",   style="primary"),
-            make_button("📊 All User Money", callback_data="adm_all_money",    style="primary"),
         ],
-        [make_button("❌ Close", callback_data="adm_close", style="danger")],
+        [
+            make_button("📊 All User Money", callback_data="adm_all_money",    style="primary"),
+            make_button("❌ Close",          callback_data="adm_close",        style="danger"),
+        ],
     ])
+
+def admin_del_country_service_markup():
+    """Delete Country — সার্ভিস সিলেক্ট"""
+    return build_inline_keyboard([
+        [
+            make_button("🔵 Facebook",  callback_data="adm_delcountry_Facebook",  style="primary"),
+            make_button("💬 WhatsApp",  callback_data="adm_delcountry_WhatsApp",  style="success"),
+        ],
+        [
+            make_button("✈️ Telegram",  callback_data="adm_delcountry_Telegram",  style="primary"),
+            make_button("📸 Instagram", callback_data="adm_delcountry_Instagram", style="primary"),
+        ],
+        [make_button("❌ Cancel", callback_data="adm_cancel", style="danger")],
+    ])
+
+def admin_del_country_list_markup(service_name):
+    """ডিলিট করার জন্য দেশের লিস্ট"""
+    rows      = []
+    countries = service_countries.get(service_name, [])
+    if not countries:
+        rows.append([make_button("⚠️ কোনো দেশ নেই", callback_data="noop", style="danger")])
+    else:
+        for idx, c in enumerate(countries):
+            flag  = get_flag(c["name"])
+            label = f"{flag} {c['name']}" if flag else c["name"]
+            rows.append([make_button(label, callback_data=f"adm_delcountry_do_{service_name}__{idx}", style="danger")])
+    rows.append([make_button("🔙 Back", callback_data="adm_del_country", style="primary")])
+    return build_inline_keyboard(rows)
 
 def admin_service_select_markup(action):
     return build_inline_keyboard([
@@ -693,7 +724,7 @@ def broadcast(message):
     count = failed = 0
     for uid in list(users.keys()):
         try:
-            bot.send_message(int(uid), text); count += 1; time.sleep(0.05)
+            bot.send_message(int(str(uid)), text); count += 1; time.sleep(0.05)
         except Exception:
             failed += 1
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
@@ -763,13 +794,10 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         uid_str = str(chat_id)
                         new_bal = update_firebase_balance(uid_str, OTP_PRICE)
                         received_otps[chat_id] = otp
-                        flag    = get_flag(user_countries.get(chat_id, [""])[0] if isinstance(user_countries.get(chat_id), list) else user_countries.get(chat_id, ""))
-                        text = (
-                            "╔════════════════════╗\n"
-                            f"    ➤ {matched_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
-                            "╚════════════════════╝\n"
-                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +{OTP_PRICE:.2f} 𝚃𝙺"
-                        )
+                        ctry    = user_countries.get(chat_id, [])
+                        ctry    = ctry[0] if isinstance(ctry, list) and ctry else (ctry or "")
+                        flag    = get_flag(ctry)
+                        text    = f"{flag} +{matched_num}"
                         kb = otp_result_markup(otp)
                         try:
                             bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
@@ -842,12 +870,10 @@ def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
                         uid_str = str(chat_id)
                         new_bal = update_firebase_balance(uid_str, OTP_PRICE)
                         received_otps[chat_id] = otp
-                        text = (
-                            "╔════════════════════╗\n"
-                            f"    ➤ {matched_num} ➤ 𝚁𝙲𝚅𝙴𝙳 ✅\n"
-                            "╚════════════════════╝\n"
-                            f"💰 𝙱𝙰𝙻𝙰𝙽𝙲𝙴 𝙰𝙳𝙳𝙴𝙳 : +{OTP_PRICE:.2f} 𝚃𝙺"
-                        )
+                        ctry2   = user_countries.get(chat_id, [])
+                        ctry2   = ctry2[0] if isinstance(ctry2, list) and ctry2 else (ctry2 or "")
+                        flag2   = get_flag(ctry2)
+                        text    = f"{flag2} +{matched_num}"
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
                             try:
@@ -1138,37 +1164,40 @@ def handle_admin_state(message, uid, txt):
             bot.send_message(cid, "❌ সংখ্যা বা 'all' দিন।", reply_markup=admin_cancel_markup())
 
     elif step == "withdraw_number":
-        withdraw_data[uid]["number"] = txt
-        admin_state[uid]["step"]     = "withdraw_amount"
+        # ✅ uid যেকোনো type হোক — int key দিয়ে withdraw_data access
+        int_uid = int(uid) if str(uid).isdigit() else uid
+        if int_uid not in withdraw_data:
+            withdraw_data[int_uid] = {}
+        withdraw_data[int_uid]["number"] = txt
+        admin_state[uid]["step"] = "withdraw_amount"
         msg = bot.send_message(
             cid,
-            f"💵 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝐚𝐦𝐨𝐮𝐧𝐭:",
+            "💵 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝐚𝐦𝐨𝐮𝐧𝐭:",
             reply_markup=withdraw_cancel_markup()
         )
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+        bot.register_next_step_handler(msg, lambda m, u=uid: handle_admin_state(m, u, m.text))
 
     elif step == "withdraw_amount":
         try:
-            amount = int(txt)
+            amount  = int(txt)
             if amount < 50:
                 bot.send_message(cid, "❌ Minimum 50 TK!", reply_markup=withdraw_cancel_markup()); return
-            withdraw_data[uid]["amount"] = amount
-            method = withdraw_data[uid].get("method", "")
-            number = withdraw_data[uid].get("number", "")
+            int_uid = int(uid) if str(uid).isdigit() else uid
+            if int_uid not in withdraw_data:
+                withdraw_data[int_uid] = {}
+            withdraw_data[int_uid]["amount"] = amount
+            method = withdraw_data[int_uid].get("method", "")
+            number = withdraw_data[int_uid].get("number", "")
             admin_state.pop(uid, None)
-            # Confirm message
-            bot.send_message(
-                cid,
+            confirm_txt = (
                 "ভালো করে দেখুন\n"
                 "আপনার নাম্বার ঠিক আছে কি না\n"
                 "ভুল হলে এডমিন দায়ী নয়\n"
                 "সব কিছু ঠিক হবে confirm করুন\n\n"
                 f"📱 {method.upper()} : {number}\n"
-                f"💰 Amount : {amount} TK",
-                reply_markup=withdraw_confirm_markup()
+                f"💰 Amount : {amount} TK"
             )
-            # temp save
-            withdraw_data[uid]["amount"] = amount
+            bot.send_message(cid, confirm_txt, reply_markup=withdraw_confirm_markup())
         except Exception:
             bot.send_message(cid, "❌ সংখ্যা দিন।", reply_markup=withdraw_cancel_markup())
 
@@ -1260,7 +1289,7 @@ def handle_query(call):
         count = failed = 0
         for u in list(users.keys()):
             try:
-                bot.send_message(int(u), msg_text); count += 1; time.sleep(0.05)
+                bot.send_message(int(str(u)), msg_text); count += 1; time.sleep(0.05)
             except Exception:
                 failed += 1
         try:
@@ -1323,6 +1352,51 @@ def handle_query(call):
         if not is_admin(uid): return
         try:
             bot.edit_message_text("⚙️ ADMIN PANEL", cid, call.message.message_id, reply_markup=admin_panel_markup())
+        except Exception:
+            pass
+
+    elif call.data == "adm_del_country":
+        if not is_admin(uid): return
+        try:
+            bot.edit_message_text(
+                "🗑️ কোন সার্ভিস থেকে দেশ ডিলিট করবেন?",
+                cid, call.message.message_id,
+                reply_markup=admin_del_country_service_markup()
+            )
+        except Exception:
+            pass
+
+    elif call.data.startswith("adm_delcountry_") and not call.data.startswith("adm_delcountry_do_"):
+        if not is_admin(uid): return
+        service_name = call.data.replace("adm_delcountry_", "")
+        if service_name not in FIXED_SERVICES: return
+        try:
+            bot.edit_message_text(
+                f"🗑️ {service_name} — কোন দেশ ডিলিট করবেন?",
+                cid, call.message.message_id,
+                reply_markup=admin_del_country_list_markup(service_name)
+            )
+        except Exception:
+            pass
+
+    elif call.data.startswith("adm_delcountry_do_"):
+        if not is_admin(uid): return
+        inner        = call.data.replace("adm_delcountry_do_", "")
+        sep          = inner.rfind("__")
+        if sep == -1: return
+        service_name = inner[:sep]
+        idx          = int(inner[sep + 2:])
+        countries    = service_countries.get(service_name, [])
+        if idx >= len(countries): return
+        deleted      = countries[idx]["name"]
+        service_countries[service_name].pop(idx)
+        save_countries_to_firebase(service_name)
+        try:
+            bot.edit_message_text(
+                f"✅ {service_name} → {deleted} ডিলিট হয়েছে!\n\n🗑️ কোন দেশ ডিলিট করবেন?",
+                cid, call.message.message_id,
+                reply_markup=admin_del_country_list_markup(service_name)
+            )
         except Exception:
             pass
 
@@ -1506,9 +1580,11 @@ def handle_query(call):
         bot.register_next_step_handler(sent, lambda m, u=uid_str: handle_admin_state(m, u, m.text))
 
     elif call.data == "confirm_withdraw":
-        method = withdraw_data.get(uid, {}).get("method", "")
-        number = withdraw_data.get(uid, {}).get("number", "")
-        amount = withdraw_data.get(uid, {}).get("amount", 0)
+        # ✅ uid int দিয়ে খোঁজো
+        w_data = withdraw_data.get(uid) or withdraw_data.get(uid_str) or {}
+        method = w_data.get("method", "")
+        number = w_data.get("number", "")
+        amount = w_data.get("amount", 0)
         uname  = user_names.get(uid_str, "Unknown")
         # ✅ admin_state clear করো
         admin_state.pop(uid_str, None)
