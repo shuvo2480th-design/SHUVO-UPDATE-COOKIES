@@ -37,7 +37,7 @@ API_KEY           = "MUBTR1MKUBO"
 CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
 HEADERS           = {"mauthapi": API_KEY}
 DB_FILE           = "otp_history.pkl"
-AUTO_DELETE_SEC   = 15  # ১৫ সেকেন্ড পর অটো ডিলিট
+AUTO_DELETE_SEC   = 90  # ৯০ সেকেন্ড পর অটো ডিলিট
 
 BD_TZ = timezone(timedelta(hours=6))
 
