@@ -797,7 +797,7 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         ctry    = user_countries.get(chat_id, [])
                         ctry    = ctry[0] if isinstance(ctry, list) and ctry else (ctry or "")
                         flag    = get_flag(ctry)
-                        text    = f"{flag} +{matched_num}"
+                        text    = f"{flag} {matched_num}\nEarn : 0.40৳"
                         kb = otp_result_markup(otp)
                         try:
                             bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
@@ -873,7 +873,7 @@ def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
                         ctry2   = user_countries.get(chat_id, [])
                         ctry2   = ctry2[0] if isinstance(ctry2, list) and ctry2 else (ctry2 or "")
                         flag2   = get_flag(ctry2)
-                        text    = f"{flag2} +{matched_num}"
+                        text    = f"{flag2} {matched_num}\nEarn : 0.40৳"
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
                             try:
