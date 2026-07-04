@@ -1441,16 +1441,14 @@ def handle_query(call):
     elif call.data == "get_number_menu":
         try:
             bot.edit_message_text(
-                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা
-সিলেক্ট করুন:",
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
                 cid, call.message.message_id,
                 reply_markup=service_menu_markup()
             )
         except Exception:
             bot.send_message(
                 cid,
-                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা
-সিলেক্ট করুন:",
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
                 reply_markup=service_menu_markup()
             )
 
