@@ -754,8 +754,11 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
             current_nums = user_numbers.get(chat_id, [])
             if not isinstance(current_nums, list):
                 current_nums = [current_nums] if current_nums else []
-            if current_nums and current_nums != start_numbers:
+            # ✅ নাম্বার বদলে গেলে নতুন নাম্বারে continue — বন্ধ না
+            if current_nums and set(current_nums) != set(start_numbers):
                 start_numbers = list(current_nums)
+                # used_otps রিসেট করো নতুন নাম্বারের জন্য
+                used_otps[chat_id] = []
                 try:
                     nums_str = " | ".join(f"+{n}" for n in start_numbers)
                     active_msg_id = bot.send_message(chat_id, f"🔄 নতুন নাম্বারে OTP খোঁজা শুরু: {nums_str}").message_id
@@ -828,9 +831,14 @@ def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
     if chat_id not in global_used_otps:
         global_used_otps[chat_id] = set()
     consecutive_errors = 0
+    start_time = time.time()
 
     while True:
         try:
+            # ✅ 3 মিনিট পরে বন্ধ
+            if time.time() - start_time > 600:
+                otp_running[chat_id] = False
+                return
             # নাম্বার বদলে গেলে বন্ধ
             current_nums = user_numbers.get(chat_id, [])
             if not current_nums:
@@ -968,7 +976,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     # State সেট করো
     otp_running[chat_id]    = False
     strd_running[chat_id]   = False
-    time.sleep(0.1)
+    time.sleep(0.5)  # পুরনো thread বন্ধ হওয়ার সময় দাও
     user_numbers[chat_id]   = nums
     user_countries[chat_id] = countries
     user_ranges[chat_id]    = rid
