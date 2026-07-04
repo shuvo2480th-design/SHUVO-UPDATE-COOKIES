@@ -236,6 +236,19 @@ def extract_otp(message_text, phone_number=None):
     if not message_text:
         return None
     phone_digits = clean_number(phone_number) if phone_number else ""
+
+    # STEP 1: "975-802" বা "975 802" এর মতো dash/space দেওয়া OTP ধরো
+    dashed_matches = re.findall(r'\b(\d{3,5}[-\s]\d{3,5})\b', message_text)
+    for match in dashed_matches:
+        joined = re.sub(r'[-\s]', '', match)
+        if not joined.isdigit():
+            continue
+        if phone_digits and (joined in phone_digits or phone_digits in joined):
+            continue
+        if 4 <= len(joined) <= 10:
+            return joined
+
+    # STEP 2: "138 740" এর মতো spaced OTP ধরো
     spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
     for match in spaced_matches:
         joined = match.replace(" ", "")
@@ -245,6 +258,8 @@ def extract_otp(message_text, phone_number=None):
             continue
         if 4 <= len(joined) <= 10:
             return joined
+
+    # STEP 3: keyword দিয়ে OTP খোঁজো
     keyword_patterns = [
         r'(?:code|otp|OTP|Code|verification|verify|passcode|password|কোড)[^\d]*(\d{4,8})',
         r'(\d{4,8})[^\d]*(?:is your|as your|কোড)',
@@ -256,6 +271,8 @@ def extract_otp(message_text, phone_number=None):
             if phone_digits and candidate in phone_digits:
                 continue
             return candidate
+
+    # STEP 4: সাধারণ ৪-১০ digit
     candidates = re.findall(r'\b(\d{4,10})\b', message_text)
     for candidate in candidates:
         if phone_digits:
@@ -269,6 +286,8 @@ def extract_otp(message_text, phone_number=None):
             continue
         if 4 <= len(candidate) <= 10:
             return candidate
+
+    # STEP 5: fallback
     all_digits = re.sub(r'\D', '', message_text)
     if phone_digits:
         all_digits = all_digits.replace(phone_digits, "")
@@ -835,9 +854,16 @@ def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
 
     while True:
         try:
-            # ✅ 3 মিনিট পরে বন্ধ
-            if time.time() - start_time > 600:
+            # ✅ ৫ মিনিট পরে Time Expired message পাঠাও
+            if time.time() - start_time > 300:
                 otp_running[chat_id] = False
+                try:
+                    kb = build_inline_keyboard([[
+                        make_button("📱 GET NUMBER", callback_data="get_number_menu", style="primary")
+                    ]])
+                    bot.send_message(chat_id, "⏰ Time Expired!", reply_markup=kb)
+                except Exception:
+                    pass
                 return
             # নাম্বার বদলে গেলে বন্ধ
             current_nums = user_numbers.get(chat_id, [])
@@ -1411,6 +1437,22 @@ def handle_query(call):
     # ========== NORMAL CALLBACKS ==========
     elif call.data == "noop":
         bot.answer_callback_query(call.id)
+
+    elif call.data == "get_number_menu":
+        try:
+            bot.edit_message_text(
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা
+সিলেক্ট করুন:",
+                cid, call.message.message_id,
+                reply_markup=service_menu_markup()
+            )
+        except Exception:
+            bot.send_message(
+                cid,
+                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা
+সিলেক্ট করুন:",
+                reply_markup=service_menu_markup()
+            )
 
     elif call.data == "refresh_2fa":
         # ✅ একই key দিয়ে নতুন OTP দেবে
