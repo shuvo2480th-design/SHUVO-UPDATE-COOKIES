@@ -839,7 +839,7 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
         strd_running[chat_id] = False
 
 # ===================== AUTO OTP — ২ নাম্বারে খোঁজে =====================
-def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
+def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=None):
     """phone_numbers: list of up to 2 numbers"""
     if otp_running.get(chat_id):
         return
@@ -854,13 +854,20 @@ def auto_check_otp(chat_id, phone_numbers, search_msg_id=None):
 
     while True:
         try:
-            # ✅ ৫ মিনিট পরে Time Expired message পাঠাও
+            # ✅ ৫ মিনিট পরে — number message ডিলিট করে Time Expired দেখাও
             if time.time() - start_time > 300:
                 otp_running[chat_id] = False
                 try:
                     kb = build_inline_keyboard([[
                         make_button("📱 GET NUMBER", callback_data="get_number_menu", style="primary")
                     ]])
+                    # number message ডিলিট করো
+                    if number_msg_id:
+                        try:
+                            bot.delete_message(chat_id, number_msg_id)
+                        except Exception:
+                            pass
+                    # Time Expired message পাঠাও
                     bot.send_message(chat_id, "⏰ Time Expired!", reply_markup=kb)
                 except Exception:
                     pass
@@ -1038,7 +1045,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     except Exception:
         bot.send_message(chat_id, msg_text, reply_markup=kb)
 
-    threading.Thread(target=auto_check_otp, args=(chat_id, list(nums)), daemon=True).start()
+    threading.Thread(target=auto_check_otp, args=(chat_id, list(nums), status_id), daemon=True).start()
 
 # ===================== TEXT HANDLER =====================
 @safe_execute
