@@ -410,11 +410,11 @@ def service_menu_markup():
     rows    = []
     buttons = []
     for name in FIXED_SERVICES:
-        icon = SERVICE_ICONS.get(name, "📱")
-        buttons.append(make_button(f"{icon} {name.upper()}", callback_data=f"sv_{name}", style="primary"))
-    for i in range(0, len(buttons), 2):
-        rows.append(buttons[i:i+2])
-    rows.append([make_button("🔙 BACK", callback_data="back_to_main", style="danger")])
+        # ✅ ইমোজি বাদ - শুধু নাম দেখাবে
+        buttons.append(make_button(f"{name.upper()}", callback_data=f"sv_{name}", style="primary"))
+    # ✅ প্রতিটি বাটন আলাদা row-তে (উপর-নিচে)
+    for btn in buttons:
+        rows.append([btn])
     return build_inline_keyboard(rows)
 
 def country_menu_markup(service_name):
@@ -799,19 +799,6 @@ def broadcast(message):
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
 
 # ===================== OTP TIMER =====================
-def otp_expiry_timer(chat_id, service_name):
-    """OTP ২০ মিনিট পর time expired করবে"""
-    time.sleep(1200)  # ২০ মিনিট = 1200 সেকেন্ড
-    try:
-        bot.send_message(
-            chat_id,
-            "⏰ Time Expired!\n\n"
-            "আপনার OTP ২০ মিনিটের সময় শেষ হয়েছে। "
-            "নতুন নাম্বার নিয়ে চেষ্টা করুন।"
-        )
-    except Exception:
-        pass
-
 # ===================== /strd =====================
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
@@ -885,7 +872,15 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         ctry    = user_countries.get(chat_id, [])
                         ctry    = ctry[0] if isinstance(ctry, list) and ctry else (ctry or "")
                         flag    = get_flag(ctry)
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
+                        service = user_service.get(chat_id, "Unknown")
+                        text    = (
+                            f"╭──────────────╮\n"
+                            f"📩 {service} OTP  ✅\n"
+                            f"╰──────────────╯\n"
+                            f"{flag}  : {matched_num}\n"
+                            f"💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n"
+                            f"✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                        )
                         kb = otp_result_markup(otp)
                         try:
                             bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
@@ -894,13 +889,6 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                                 bot.send_message(chat_id, text, reply_markup=kb)
                             except Exception:
                                 pass
-                        # ✅ OTP Timer ২০ মিনিটের জন্য শুরু করছি
-                        service = user_service.get(chat_id, "Unknown")
-                        threading.Thread(
-                            target=otp_expiry_timer,
-                            args=(chat_id, service),
-                            daemon=True
-                        ).start()
                         try:
                             active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
                         except Exception:
@@ -928,7 +916,7 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
     while True:
         try:
             # ✅ ৫ মিনিট পরে — number message ডিলিট করে Time Expired দেখাও
-            if time.time() - start_time > 300:
+            if time.time() - start_time > 1200:  # ✅ ২০ মিনিট (আগে ৫ মিনিট ছিল)
                 otp_running[chat_id] = False
                 try:
                     kb = build_inline_keyboard([[
@@ -989,7 +977,15 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         ctry2   = user_countries.get(chat_id, [])
                         ctry2   = ctry2[0] if isinstance(ctry2, list) and ctry2 else (ctry2 or "")
                         flag2   = get_flag(ctry2)
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag2} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
+                        service = user_service.get(chat_id, "Unknown")
+                        text    = (
+                            f"╭──────────────╮\n"
+                            f"📩 {service} OTP  ✅\n"
+                            f"╰──────────────╯\n"
+                            f"{flag2}  : {matched_num}\n"
+                            f"💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n"
+                            f"✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                        )
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
                             try:
@@ -1006,13 +1002,6 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                                 bot.send_message(chat_id, text, reply_markup=kb)
                             except Exception:
                                 pass
-                        # ✅ OTP Timer ২০ মিনিটের জন্য শুরু করছি
-                        service = user_service.get(chat_id, "Unknown")
-                        threading.Thread(
-                            target=otp_expiry_timer,
-                            args=(chat_id, service),
-                            daemon=True
-                        ).start()
             except requests.exceptions.Timeout:
                 consecutive_errors += 1
             except requests.exceptions.RequestException:
@@ -1159,7 +1148,7 @@ def handle_text(message):
         return
 
     if txt == "📱 GET NUMBER":
-        bot.send_message(message.chat.id, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
+        bot.send_message(message.chat.id, "📱 SELECT A SERVICE", reply_markup=service_menu_markup())
 
     elif txt == "📱 NUMBER BUY":
         msg = bot.send_message(message.chat.id, "⚙️ PLEASE ENTER YOUR RANGE\n\n🔢 Example : 2245564")
@@ -1466,11 +1455,14 @@ def handle_query(call):
             bot.answer_callback_query(call.id, "❌ Admin only!")
             return
         admin_state[uid_str] = {"step": "change_price"}
+        kb = build_inline_keyboard([
+            [make_button("🔙 BACK", callback_data="admin_panel", style="danger")]
+        ])
         msg = bot.send_message(
             cid,
-            "💰 নতুন OTP মূল্য কত হবে?\n\n"
-            "📝 উদাহরণ: 0.50 অথবা 1.25\n\n"
-            "(এটি প্রতিটি OTP-তে ইউজারকে দেওয়া হবে)"
+            "💰 OTP মূল্য কত হবে?\n\n"
+            "📝 উদাহরণ: 0.50 অথবা 1.25",
+            reply_markup=kb
         )
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
@@ -1563,14 +1555,14 @@ def handle_query(call):
     elif call.data == "get_number_menu":
         try:
             bot.edit_message_text(
-                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                "📱 SELECT A SERVICE",
                 cid, call.message.message_id,
                 reply_markup=service_menu_markup()
             )
         except Exception:
             bot.send_message(
                 cid,
-                "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:",
+                "📱 SELECT A SERVICE",
                 reply_markup=service_menu_markup()
             )
 
@@ -1651,9 +1643,9 @@ def handle_query(call):
 
     elif call.data == "back_to_services":
         try:
-            bot.edit_message_text("📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", cid, call.message.message_id, reply_markup=service_menu_markup())
+            bot.edit_message_text("📱 SELECT A SERVICE", cid, call.message.message_id, reply_markup=service_menu_markup())
         except Exception:
-            bot.send_message(cid, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
+            bot.send_message(cid, "📱 SELECT A SERVICE", reply_markup=service_menu_markup())
 
     elif call.data.startswith("back_to_country_"):
         service_name = call.data.replace("back_to_country_", "")
