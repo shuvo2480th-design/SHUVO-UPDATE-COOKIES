@@ -44,9 +44,11 @@ FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
 
-FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
+FIXED_SERVICES = ["Facebook", "Instagram", "WhatsApp", "Telegram"]
 
 SERVICE_ICONS = {
+    # পুরনো আইকন
+
     "Facebook":  "F",
     "WhatsApp":  "💬",
     "Telegram":  "✈️",
@@ -54,6 +56,7 @@ SERVICE_ICONS = {
 }
 
 OTP_PRICE = 0.40
+admin_otp_price = 0.40  # Admin সেট করবে
 
 # ===================== SESSION & BOT =====================
 session = requests.Session()
@@ -691,7 +694,7 @@ def del_service(message):
 def price_command(message):
     bot.send_message(
         message.chat.id,
-        f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+        f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {admin_otp_price:.2f} 𝐓𝐊",
         reply_markup=otp_price_markup()
     )
 
@@ -705,6 +708,35 @@ def addmoney_command(message):
     uid, amount = parts[1], float(parts[2])
     new_bal = update_firebase_balance(uid, amount)
     bot.reply_to(message, f"✅ ব্যালেন্স আপডেট!\n👤 ID: {uid}\n💰 নতুন: {new_bal} TK")
+
+@bot.message_handler(commands=['setprice'])
+def setprice_command(message):
+    """OTP প্রাইস সেট করা"""
+    global admin_otp_price
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) != 2:
+        bot.reply_to(
+            message,
+            f"💰 নতুন OTP মূল্য কত হবে?\n\n📝 উদাহরণ: 0.50 অথবা 1.25\n\n(এটি প্রতিটি OTP-তে ইউজারকে দেওয়া হবে)\n\nবর্তমান মূল্য: {admin_otp_price:.2f} টাকা"
+        )
+        return
+    try:
+        new_price = float(parts[1])
+        if new_price < 0:
+            bot.reply_to(message, "❌ মূল্য negative হতে পারে না।")
+            return
+        admin_otp_price = new_price
+        _fb_put("/admin/otp_price", new_price)
+        bot.reply_to(
+            message,
+            f"✅ OTP মূল্য সেট করা হয়েছে!\n\n"
+            f"💰 নতুন মূল্য: {new_price:.2f} টাকা\n"
+            f"📝 প্রতিটি OTP-তে ইউজার এই পরিমাণ পাবে।"
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ ভুল সংখ্যা। যেমন: /setprice 0.50")
 
 @bot.message_handler(commands=['delbalance'])
 def del_balance_cmd(message):
@@ -765,6 +797,20 @@ def broadcast(message):
         except Exception:
             failed += 1
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
+
+# ===================== OTP TIMER =====================
+def otp_expiry_timer(chat_id, service_name):
+    """OTP ২০ মিনিট পর time expired করবে"""
+    time.sleep(1200)  # ২০ মিনিট = 1200 সেকেন্ড
+    try:
+        bot.send_message(
+            chat_id,
+            "⏰ Time Expired!\n\n"
+            "আপনার OTP ২০ মিনিটের সময় শেষ হয়েছে। "
+            "নতুন নাম্বার নিয়ে চেষ্টা করুন।"
+        )
+    except Exception:
+        pass
 
 # ===================== /strd =====================
 @bot.message_handler(commands=['strd'])
@@ -848,6 +894,13 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                                 bot.send_message(chat_id, text, reply_markup=kb)
                             except Exception:
                                 pass
+                        # ✅ OTP Timer ২০ মিনিটের জন্য শুরু করছি
+                        service = user_service.get(chat_id, "Unknown")
+                        threading.Thread(
+                            target=otp_expiry_timer,
+                            args=(chat_id, service),
+                            daemon=True
+                        ).start()
                         try:
                             active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
                         except Exception:
@@ -953,6 +1006,13 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                                 bot.send_message(chat_id, text, reply_markup=kb)
                             except Exception:
                                 pass
+                        # ✅ OTP Timer ২০ মিনিটের জন্য শুরু করছি
+                        service = user_service.get(chat_id, "Unknown")
+                        threading.Thread(
+                            target=otp_expiry_timer,
+                            args=(chat_id, service),
+                            daemon=True
+                        ).start()
             except requests.exceptions.Timeout:
                 consecutive_errors += 1
             except requests.exceptions.RequestException:
@@ -1652,12 +1712,12 @@ def handle_query(call):
     elif call.data == "otp_price":
         try:
             bot.edit_message_text(
-                f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+                f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {admin_otp_price:.2f} 𝐓𝐊",
                 cid, call.message.message_id,
                 reply_markup=otp_price_markup()
             )
         except Exception:
-            bot.send_message(cid, f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊", reply_markup=otp_price_markup())
+            bot.send_message(cid, f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {admin_otp_price:.2f} 𝐓𝐊", reply_markup=otp_price_markup())
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
