@@ -540,10 +540,13 @@ def admin_panel_markup():
         ],
         [
             make_button("🗑️ Money Clear",    callback_data="adm_money_clear",  style="danger"),
-            make_button("👥 User Count",     callback_data="adm_user_count",   style="primary"),
+            make_button("💰 Change Price",   callback_data="admin_change_price", style="success"),
         ],
         [
+            make_button("👥 User Count",     callback_data="adm_user_count",   style="primary"),
             make_button("📊 All User Money", callback_data="adm_all_money",    style="primary"),
+        ],
+        [
             make_button("❌ Close",          callback_data="adm_close",        style="danger"),
         ],
     ])
