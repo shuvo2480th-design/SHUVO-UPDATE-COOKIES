@@ -1455,30 +1455,21 @@ def handle_admin_state(message, uid, txt):
         bot.send_message(cid, f"📨 পাঠাবেন এই মেসেজটি:\n\n{txt}\n\nনিশ্চিত করুন:", reply_markup=admin_confirm_send_markup())
 
     elif step == "user_message_confirm":
-        # ✅ User message confirm - এখন পাঠাবেন
-        target_uid = state.get("target_uid")
+        # ✅ User message confirm - সব ইউজারকে পাঠাবেন
         msg_text = state.get("msg_text")
         
         if txt.lower() in ["yes", "হ্যাঁ"]:
-            # Individual user check - যদি target_uid থাকে
-            if target_uid:
+            # সব user কে broadcast
+            load_all_users_from_firebase()
+            count = failed = 0
+            for u in list(users.keys()):
                 try:
-                    bot.send_message(target_uid, f"📨 এডমিন থেকে মেসেজ:\n\n{msg_text}")
-                    bot.send_message(cid, f"✅ মেসেজ পাঠানো হয়েছে!\n👤 UID: {target_uid}", reply_markup=admin_panel_markup())
-                except Exception as e:
-                    bot.send_message(cid, f"❌ ব্যর্থ: {str(e)}", reply_markup=admin_panel_markup())
-            else:
-                # সব user কে broadcast
-                load_all_users_from_firebase()
-                count = failed = 0
-                for u in list(users.keys()):
-                    try:
-                        bot.send_message(int(str(u)), f"📨 এডমিন থেকে:\n\n{msg_text}")
-                        count += 1
-                        time.sleep(0.05)
-                    except Exception:
-                        failed += 1
-                bot.send_message(cid, f"✅ {count} জনকে পাঠানো হয়েছে!\n❌ {failed} জন ব্যর্থ।", reply_markup=admin_panel_markup())
+                    bot.send_message(int(str(u)), f"📨 এডমিন থেকে:\n\n{msg_text}")
+                    count += 1
+                    time.sleep(0.05)
+                except Exception:
+                    failed += 1
+            bot.send_message(cid, f"✅ {count} জনকে পাঠানো হয়েছে!\n❌ {failed} জন ব্যর্থ।", reply_markup=admin_panel_markup())
             admin_state.pop(uid, None)
         else:
             bot.send_message(cid, "❌ বাতিল করা হয়েছে", reply_markup=admin_panel_markup())
@@ -1552,11 +1543,7 @@ def handle_admin_state(message, uid, txt):
             withdraw_data[int_uid] = {}
         withdraw_data[int_uid]["number"] = txt
         admin_state[uid]["step"] = "withdraw_amount"
-        msg = bot.send_message(
-            cid,
-            "💵 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝐚𝐦𝐨𝐮𝐧𝐭:",
-            reply_markup=withdraw_cancel_markup()
-        )
+        msg = bot.send_message(cid, "💰 কত টাকা প্রত্যাহার করতে চান?", reply_markup=withdraw_cancel_markup())
         bot.register_next_step_handler(msg, lambda m, u=uid: handle_admin_state(m, u, m.text))
 
     elif step == "withdraw_amount":
@@ -1655,12 +1642,8 @@ def handle_query(call):
 
     elif call.data == "adm_user_message":
         if not is_admin(uid): return
-        admin_state[uid_str] = {"step": "user_message_uid"}
-        try:
-            bot.edit_message_text("📨 কোন ইউজারকে মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
-        except Exception:
-            pass
-        msg = bot.send_message(cid, "🆔 ইউজারের ID দিন:")
+        admin_state[uid_str] = {"step": "user_message_text"}
+        msg = bot.send_message(cid, "📝 সব ইউজারদের কি মেসেজ পাঠাতে চান?")
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_confirm_send":
@@ -2013,18 +1996,9 @@ def handle_query(call):
         method_name = call.data.capitalize()
         withdraw_data[uid] = {"method": method_name}
         admin_state[uid_str] = {"step": "withdraw_number"}
-        enter_text = f"📱 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 {method_name} 𝐧𝐮𝐦𝐛𝐞𝐫:"
-        # ✅ inline message edit (no reply_markup needed for input)
-        try:
-            bot.edit_message_text(
-                enter_text, cid, call.message.message_id,
-                reply_markup=withdraw_cancel_markup()
-            )
-        except Exception:
-            pass
-        # ✅ নতুন message পাঠাও যেটায় next_step register করা যাবে
-        sent = bot.send_message(cid, "✏️ নাম্বার টাইপ করুন:")
-        bot.register_next_step_handler(sent, lambda m, u=uid_str: handle_admin_state(m, u, m.text))
+        # ✅ শুধু একটি message পাঠাও
+        msg = bot.send_message(cid, f"📱 আপনার {method_name} নম্বর লিখুন:", reply_markup=withdraw_cancel_markup())
+        bot.register_next_step_handler(msg, lambda m, u=uid_str: handle_admin_state(m, u, m.text))
 
     elif call.data == "confirm_withdraw":
         # ✅ uid int দিয়ে খোঁজো
