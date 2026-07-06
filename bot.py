@@ -312,6 +312,38 @@ def extract_otp(message_text, phone_number=None):
         return all_digits[-6:] if len(all_digits) >= 6 else all_digits
     return None
 
+def extract_country_from_otp_message(msg_text):
+    """OTP মেসেজ থেকে flag emoji এবং country detect করা"""
+    if not msg_text:
+        return None, None
+    
+    # Flag emoji খুঁজা
+    for i in range(len(msg_text) - 1):
+        char1 = msg_text[i]
+        char2 = msg_text[i + 1]
+        code1 = ord(char1)
+        code2 = ord(char2)
+        
+        if 0x1F1E6 <= code1 <= 0x1F1FF and 0x1F1E6 <= code2 <= 0x1F1FF:
+            # Flag পাওয়া গেছে
+            flag_emoji = char1 + char2
+            
+            # Country code বের করা
+            c1 = code1 - 0x1F1E6
+            c2 = code2 - 0x1F1E6
+            country_code = chr(c1 + ord('A')) + chr(c2 + ord('A'))
+            
+            # Country name পাওয়া
+            try:
+                c = pycountry.countries.get(alpha_2=country_code)
+                country_name = c.name if c else country_code
+            except:
+                country_name = country_code
+            
+            return flag_emoji, country_name
+    
+    return None, None
+
 # ===================== HELPERS =====================
 def safe_execute(func):
     def wrapper(*args, **kwargs):
@@ -885,7 +917,33 @@ def broadcast(message):
             failed += 1
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
 
-# ===================== /strd =====================
+def flag_to_country_code(flag):
+    """Flag emoji থেকে country code বের করা"""
+    if not flag or len(flag) < 2:
+        return None
+    try:
+        # Flag emoji = 2 regional indicator symbols
+        chars = list(flag)
+        if len(chars) >= 2:
+            code1 = ord(chars[0]) - 0x1F1E6
+            code2 = ord(chars[1]) - 0x1F1E6
+            if 0 <= code1 <= 25 and 0 <= code2 <= 25:
+                return chr(code1 + ord('A')) + chr(code2 + ord('A'))
+    except:
+        pass
+    return None
+
+def get_country_name_from_code(code):
+    """Country code থেকে full country name বের করা"""
+    if not code or len(code) != 2:
+        return code
+    try:
+        c = pycountry.countries.get(alpha_2=code.upper())
+        return c.name if c else code
+    except:
+        return code
+
+# ===================== LIVE TRAFFIC DISPLAY =====================
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
     chat_id  = message.chat.id
@@ -954,15 +1012,21 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         # ✅ Firebase থেকে dynamic price পড়ুন
                         current_price = get_otp_price_from_firebase()
                         new_bal = update_firebase_balance(uid_str, current_price)
+                        
+                        # ✅ OTP মেসেজ থেকে country detect করা
+                        msg_text = item.get("message", "")
+                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        
                         # ✅ LIVE TRAFFIC আপডেট করা
-                        service = user_service.get(chat_id, "Unknown")
-                        countries_list = user_countries.get(chat_id, [])
-                        ctry = countries_list[0] if isinstance(countries_list, list) and countries_list else "Unknown"
-                        flag = get_flag(ctry)
-                        update_traffic(service, ctry, flag)
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
+                        
                         received_otps[chat_id] = otp
-                        flag    = get_flag(ctry)
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
                         kb = otp_result_markup(otp)
                         try:
                             bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
@@ -1055,16 +1119,21 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         # ✅ Firebase থেকে dynamic price পড়ুন
                         current_price = get_otp_price_from_firebase()
                         new_bal = update_firebase_balance(uid_str, current_price)
+                        
+                        # ✅ OTP মেসেজ থেকে country detect করা
+                        msg_text = item.get("message", "")
+                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        
                         # ✅ LIVE TRAFFIC আপডেট করা
-                        service = user_service.get(chat_id, "Unknown")
-                        countries_list = user_countries.get(chat_id, [])
-                        ctry = countries_list[0] if isinstance(countries_list, list) and countries_list else "Unknown"
-                        flag = get_flag(ctry)
-                        update_traffic(service, ctry, flag)
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
+                        
                         received_otps[chat_id] = otp
-                        ctry2   = ctry  # একই country ব্যবহার করুন
-                        flag2   = flag  # একই flag ব্যবহার করুন
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag2} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
                             try:
@@ -1675,17 +1744,23 @@ def handle_query(call):
 
     elif call.data == "refresh_traffic":
         # ✅ LIVE TRAFFIC রিফ্রেশ - পুরানো মেসেজ edit করা
-        traffic_display = get_traffic_display()
         try:
+            traffic_display = get_traffic_display()
             bot.edit_message_text(
-                traffic_display, 
-                cid, 
-                call.message.message_id, 
+                text=traffic_display, 
+                chat_id=cid, 
+                message_id=call.message.message_id, 
                 reply_markup=traffic_menu_markup()
             )
-            bot.answer_callback_query(call.id, "✅ রিফ্রেশ করা হয়েছে")
+            bot.answer_callback_query(call.id, "✅ আপডেট হয়েছে!")
         except Exception as e:
-            bot.answer_callback_query(call.id, "❌ রিফ্রেশ ব্যর্থ")
+            try:
+                # Edit fail হলে নতুন মেসেজ পাঠাও
+                traffic_display = get_traffic_display()
+                bot.send_message(cid, traffic_display, reply_markup=traffic_menu_markup())
+                bot.answer_callback_query(call.id, "✅ রিফ্রেশ হয়েছে")
+            except:
+                bot.answer_callback_query(call.id, "❌ রিফ্রেশ ব্যর্থ")
 
     elif call.data == "back_to_main":
         welcome_text = (
