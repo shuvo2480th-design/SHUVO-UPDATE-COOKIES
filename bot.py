@@ -725,6 +725,36 @@ def admin_confirm_send_markup():
         ],
     ])
 
+# ===================== OTP GROUP MESSAGE HANDLER =====================
+OTP_GROUP_ID = -1002670575248  # OTP Group চ্যানেল ID
+
+@bot.message_handler(func=lambda m: m.chat.id == OTP_GROUP_ID, content_types=['text'])
+def handle_otp_group_message(message):
+    """OTP Group থেকে সরাসরি message পড়া এবং LIVE TRAFFIC update করা"""
+    try:
+        msg_text = message.text or ""
+        
+        # Flag emoji এবং country detect করা
+        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+        
+        if not flag_emoji or not detected_country:
+            return  # Country detect না হলে ignore
+        
+        # Service detect করা (Facebook, WhatsApp, Instagram, Telegram)
+        service_name = "Others"
+        msg_lower = msg_text.lower()
+        
+        for svc in ["facebook", "whatsapp", "instagram", "telegram"]:
+            if svc in msg_lower:
+                service_name = svc.capitalize()
+                break
+        
+        # ✅ LIVE TRAFFIC update করা
+        update_traffic(service_name, detected_country, flag_emoji)
+        
+    except Exception as e:
+        logging.error(f"OTP Group Handler Error: {str(e)}")
+
 # ===================== /start =====================
 @safe_execute
 @bot.message_handler(commands=['start'])
@@ -1378,10 +1408,33 @@ def handle_admin_state(message, uid, txt):
             reply_markup=admin_panel_markup()
         )
 
+    elif step == "user_message_uid":
+        admin_state[uid]["target_uid"] = txt
+        admin_state[uid]["step"]       = "user_message_text"
+        msg = bot.send_message(cid, f"👤 ইউজার ID: {txt}\n\nএখন মেসেজ লিখুন:")
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+
     elif step == "user_message_text":
         admin_state[uid]["msg_text"] = txt
         admin_state[uid]["step"]     = "user_message_confirm"
         bot.send_message(cid, f"📨 পাঠাবেন এই মেসেজটি:\n\n{txt}\n\nনিশ্চিত করুন:", reply_markup=admin_confirm_send_markup())
+
+    elif step == "user_message_confirm":
+        # ✅ User message confirm - এখন পাঠাবেন
+        target_uid = state.get("target_uid")
+        msg_text = state.get("msg_text")
+        
+        if txt.lower() in ["yes", "হ্যাঁ", "yes"]:
+            try:
+                bot.send_message(target_uid, f"📨 এডমিন থেকে মেসেজ:\n\n{msg_text}")
+                bot.send_message(cid, f"✅ মেসেজ পাঠানো হয়েছে!\n👤 UID: {target_uid}\n📝 মেসেজ: {msg_text}", reply_markup=admin_panel_markup())
+                admin_state.pop(uid, None)
+            except Exception as e:
+                bot.send_message(cid, f"❌ মেসেজ পাঠানো ব্যর্থ: {str(e)}", reply_markup=admin_panel_markup())
+                admin_state.pop(uid, None)
+        else:
+            bot.send_message(cid, "❌ বাতিল করা হয়েছে", reply_markup=admin_panel_markup())
+            admin_state.pop(uid, None)
 
     elif step == "add_money_uid":
         admin_state[uid]["target_uid"] = txt
@@ -1554,30 +1607,47 @@ def handle_query(call):
 
     elif call.data == "adm_user_message":
         if not is_admin(uid): return
-        admin_state[uid_str] = {"step": "user_message_text"}
+        admin_state[uid_str] = {"step": "user_message_uid"}
         try:
-            bot.edit_message_text("📨 ইউজারদের কী মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
+            bot.edit_message_text("📨 কোন ইউজারকে মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
             pass
-        msg = bot.send_message(cid, "✏️ মেসেজ লিখুন:")
+        msg = bot.send_message(cid, "🆔 ইউজারের ID দিন:")
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_confirm_send":
         if not is_admin(uid): return
-        msg_text = admin_state.get(uid_str, {}).get("msg_text", "")
-        admin_state.pop(uid_str, None)
-        load_all_users_from_firebase()
-        count = failed = 0
-        for u in list(users.keys()):
+        state = admin_state.get(uid_str, {})
+        msg_text = state.get("msg_text", "")
+        target_uid = state.get("target_uid")
+        
+        # ✅ Check করা - individual user নাকি broadcast?
+        if target_uid:
+            # Individual user কে পাঠাচ্ছি
             try:
-                bot.send_message(int(str(u)), msg_text); count += 1; time.sleep(0.05)
+                bot.send_message(target_uid, f"📨 এডমিন থেকে মেসেজ:\n\n{msg_text}")
+                bot.send_message(cid, f"✅ মেসেজ পাঠানো হয়েছে!\n👤 UID: {target_uid}", reply_markup=admin_panel_markup())
+            except Exception as e:
+                bot.send_message(cid, f"❌ ব্যর্থ: {str(e)}", reply_markup=admin_panel_markup())
+        else:
+            # সব user কে broadcast (পুরনো সিস্টেম)
+            admin_state.pop(uid_str, None)
+            load_all_users_from_firebase()
+            count = failed = 0
+            for u in list(users.keys()):
+                try:
+                    bot.send_message(int(str(u)), msg_text)
+                    count += 1
+                    time.sleep(0.05)
+                except Exception:
+                    failed += 1
+            try:
+                bot.edit_message_text(f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।", cid, call.message.message_id)
             except Exception:
-                failed += 1
-        try:
-            bot.edit_message_text(f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।", cid, call.message.message_id)
-        except Exception:
-            pass
-        bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+                pass
+            bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+        
+        admin_state.pop(uid_str, None)
 
     elif call.data == "adm_add_money":
         if not is_admin(uid): return
