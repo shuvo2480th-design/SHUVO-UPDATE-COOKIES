@@ -399,21 +399,29 @@ def get_country_name_from_api(country_code):
         return country_code
 
 def update_traffic(service_name, country, flag):
-    """OTP আসলে traffic update করা"""
-    global traffic_last_reset, live_traffic  # ✅ global live_traffic যোগ করা
+    """OTP আসলে traffic update করা - সঠিক implementation"""
+    global traffic_last_reset, live_traffic
     
     # ১৫ মিনিট পর reset
-    if time.time() - traffic_last_reset > 900:
-        live_traffic = {s: {} for s in ["Facebook", "WhatsApp", "Instagram", "Telegram", "Others"]}
-        traffic_last_reset = time.time()
+    current_time = time.time()
+    if current_time - traffic_last_reset > 900:
+        # Reset করা
+        for service in live_traffic:
+            live_traffic[service] = {}
+        traffic_last_reset = current_time
     
+    # Service name validation
     if service_name not in live_traffic:
         service_name = "Others"
     
+    # Country key তৈরি করা
     key = f"{flag} {country}"
-    if key not in live_traffic[service_name]:
-        live_traffic[service_name][key] = 0
-    live_traffic[service_name][key] += 1
+    
+    # Count বাড়ানো
+    if key in live_traffic[service_name]:
+        live_traffic[service_name][key] += 1
+    else:
+        live_traffic[service_name][key] = 1
 
 def get_traffic_display():
     """LIVE TRAFFIC ডিসপ্লে তৈরি করা"""
@@ -948,12 +956,11 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         new_bal = update_firebase_balance(uid_str, current_price)
                         # ✅ LIVE TRAFFIC আপডেট করা
                         service = user_service.get(chat_id, "Unknown")
-                        ctry = user_countries.get(chat_id, "")
+                        countries_list = user_countries.get(chat_id, [])
+                        ctry = countries_list[0] if isinstance(countries_list, list) and countries_list else "Unknown"
                         flag = get_flag(ctry)
                         update_traffic(service, ctry, flag)
                         received_otps[chat_id] = otp
-                        ctry    = user_countries.get(chat_id, [])
-                        ctry    = ctry[0] if isinstance(ctry, list) and ctry else (ctry or "")
                         flag    = get_flag(ctry)
                         text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
                         kb = otp_result_markup(otp)
@@ -1050,13 +1057,13 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         new_bal = update_firebase_balance(uid_str, current_price)
                         # ✅ LIVE TRAFFIC আপডেট করা
                         service = user_service.get(chat_id, "Unknown")
-                        ctry = user_countries.get(chat_id, "")
+                        countries_list = user_countries.get(chat_id, [])
+                        ctry = countries_list[0] if isinstance(countries_list, list) and countries_list else "Unknown"
                         flag = get_flag(ctry)
                         update_traffic(service, ctry, flag)
                         received_otps[chat_id] = otp
-                        ctry2   = user_countries.get(chat_id, [])
-                        ctry2   = ctry2[0] if isinstance(ctry2, list) and ctry2 else (ctry2 or "")
-                        flag2   = get_flag(ctry2)
+                        ctry2   = ctry  # একই country ব্যবহার করুন
+                        flag2   = flag  # একই flag ব্যবহার করুন
                         text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag2} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : {current_price:.2f} ৳"
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
@@ -1667,12 +1674,18 @@ def handle_query(call):
             bot.answer_callback_query(call.id, "❌ Still not joined!")
 
     elif call.data == "refresh_traffic":
-        # ✅ LIVE TRAFFIC রিফ্রেশ করা
+        # ✅ LIVE TRAFFIC রিফ্রেশ - পুরানো মেসেজ edit করা
         traffic_display = get_traffic_display()
         try:
-            bot.edit_message_text(traffic_display, cid, call.message.message_id, reply_markup=traffic_menu_markup())
-        except Exception:
-            bot.send_message(cid, traffic_display, reply_markup=traffic_menu_markup())
+            bot.edit_message_text(
+                traffic_display, 
+                cid, 
+                call.message.message_id, 
+                reply_markup=traffic_menu_markup()
+            )
+            bot.answer_callback_query(call.id, "✅ রিফ্রেশ করা হয়েছে")
+        except Exception as e:
+            bot.answer_callback_query(call.id, "❌ রিফ্রেশ ব্যর্থ")
 
     elif call.data == "back_to_main":
         welcome_text = (
