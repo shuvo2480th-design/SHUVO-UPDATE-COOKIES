@@ -87,12 +87,12 @@ global_used_otps = {}
 service_countries = {s: [] for s in FIXED_SERVICES}
 
 # Traffic tracking - per service per country, reset every 15 minutes
-traffic_data = {}  # {service: {country: count}}
+traffic_data = {}  
 last_traffic_reset = [time.time()]
 
 def reset_traffic_if_needed():
     current_time = time.time()
-    if current_time - last_traffic_reset[0] > 900:  # 15 minutes
+    if current_time - last_traffic_reset[0] > 900:
         traffic_data.clear()
         last_traffic_reset[0] = current_time
 
@@ -387,7 +387,7 @@ def main_markup(uid=None):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     b1 = types.KeyboardButton("📱 GET NUMBER")
     b1.__dict__["style"] = "primary"
-    b2 = types.KeyboardButton("📱 NUMBER BUY")
+    b2 = types.KeyboardButton("LIVE TRAFFIC")
     b2.__dict__["style"] = "primary"
     b3 = types.KeyboardButton("🔐 GET 2FA CODE")
     b3.__dict__["style"] = "primary"
@@ -1098,32 +1098,21 @@ def handle_text(message):
     if txt == "📱 GET NUMBER":
         bot.send_message(message.chat.id, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
 
-    elif txt == "📱 NUMBER BUY":
-        msg = bot.send_message(message.chat.id, "⚙️ PLEASE ENTER YOUR RANGE\n\n🔢 Example : 2245564")
-        def _buy_handler(m):
-            user_ranges[m.chat.id] = m.text
-            process_number(m, service_name="NUMBER BUY", rid=m.text)
-        bot.register_next_step_handler(msg, _buy_handler)
-
-    elif txt == "LIVE TRAFFIC":
+    if txt == "GET NUMBER":
         reset_traffic_if_needed()
-        
         has_data = any(traffic_data.get(s, {}) for s in FIXED_SERVICES)
         if not has_data:
             bot.send_message(message.chat.id, "📊 No traffic data yet.\n⏳ Wait for OTPs.")
             return
-        
         msg = "📊 LIVE TRAFFIC (Last 15 mins)\n\n"
         for service in FIXED_SERVICES:
             if service in traffic_data and traffic_data[service]:
                 msg += f"{SERVICE_ICONS.get(service, '📱')} {service}\n"
-                # Sort by count descending
                 sorted_countries = sorted(traffic_data[service].items(), key=lambda x: x[1], reverse=True)
                 for country, count in sorted_countries:
                     flag = get_flag(country)
                     msg += f"  {flag} {country} [{count}]\n"
                 msg += "\n"
-        
         bot.send_message(message.chat.id, msg)
 
     elif txt == "🔐 GET 2FA CODE":
