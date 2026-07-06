@@ -147,6 +147,21 @@ def _fb_delete(path):
     except Exception:
         pass
 
+# ✅ OTP Price Firebase functions
+def get_otp_price_from_firebase():
+    val = _fb_get("/admin/otp_price")
+    try:
+        if val is not None:
+            return float(val)
+    except Exception:
+        pass
+    return OTP_PRICE
+
+def set_otp_price_to_firebase(price):
+    price = round(float(price), 2)
+    _fb_put("/admin/otp_price", price)
+    return price
+
 def get_firebase_balance(uid):
     val = _fb_get(f"/users/{uid}/balance")
     try:
@@ -297,6 +312,38 @@ def extract_otp(message_text, phone_number=None):
         return all_digits[-6:] if len(all_digits) >= 6 else all_digits
     return None
 
+def extract_country_from_otp_message(msg_text):
+    """OTP মেসেজ থেকে flag emoji এবং country detect করা"""
+    if not msg_text:
+        return None, None
+    
+    # Flag emoji খুঁজা
+    for i in range(len(msg_text) - 1):
+        char1 = msg_text[i]
+        char2 = msg_text[i + 1]
+        code1 = ord(char1)
+        code2 = ord(char2)
+        
+        if 0x1F1E6 <= code1 <= 0x1F1FF and 0x1F1E6 <= code2 <= 0x1F1FF:
+            # Flag পাওয়া গেছে
+            flag_emoji = char1 + char2
+            
+            # Country code বের করা
+            c1 = code1 - 0x1F1E6
+            c2 = code2 - 0x1F1E6
+            country_code = chr(c1 + ord('A')) + chr(c2 + ord('A'))
+            
+            # Country name পাওয়া
+            try:
+                c = pycountry.countries.get(alpha_2=country_code)
+                country_name = c.name if c else country_code
+            except:
+                country_name = country_code
+            
+            return flag_emoji, country_name
+    
+    return None, None
+
 # ===================== HELPERS =====================
 def safe_execute(func):
     def wrapper(*args, **kwargs):
@@ -364,39 +411,127 @@ def join_markup():
         [make_button("✅ VERIFIED",        callback_data="verify_join",      style="success")],
     ])
 
+
+# ===================== LIVE TRAFFIC DATA =====================
+live_traffic = {
+    "Facebook": {},
+    "WhatsApp": {},
+    "Instagram": {},
+    "Telegram": {},
+    "Others": {}
+}
+traffic_last_reset = time.time()
+
+def get_country_name_from_api(country_code):
+    """Country code থেকে country name পাওয়া"""
+    try:
+        c = pycountry.countries.get(alpha_2=country_code.upper())
+        return c.name if c else country_code
+    except:
+        return country_code
+
+def update_traffic(service_name, country, flag):
+    """OTP আসলে traffic update করা - সঠিক implementation"""
+    global traffic_last_reset, live_traffic
+    
+    # ১৫ মিনিট পর reset
+    current_time = time.time()
+    if current_time - traffic_last_reset > 900:
+        # Reset করা
+        for service in live_traffic:
+            live_traffic[service] = {}
+        traffic_last_reset = current_time
+    
+    # Service name validation
+    if service_name not in live_traffic:
+        service_name = "Others"
+    
+    # Country key তৈরি করা
+    key = f"{flag} {country}"
+    
+    # Count বাড়ানো
+    if key in live_traffic[service_name]:
+        live_traffic[service_name][key] += 1
+    else:
+        live_traffic[service_name][key] = 1
+
+def get_traffic_display():
+    """LIVE TRAFFIC ডিসপ্লে তৈরি করা"""
+    display = "📊 LIVE TRAFFIC\n\n"
+    
+    for service in ["Facebook", "WhatsApp", "Instagram", "Telegram", "Others"]:
+        display += f"{service}\n"
+        
+        if not live_traffic[service]:
+            display += "  (কোনো OTP নেই)\n"
+        else:
+            # Count অনুযায়ী sorting
+            sorted_countries = sorted(
+                live_traffic[service].items(),
+                key=lambda x: x[1],
+                reverse=True
+            )
+            for country_key, count in sorted_countries[:5]:  # শীর্ষ ৫টি
+                display += f"  {country_key} [{count}]\n"
+        
+        display += "\n"
+    
+    return display
+
+def traffic_menu_markup():
+    """LIVE TRAFFIC মেসেজের জন্য buttons"""
+    return build_inline_keyboard([
+        [
+            make_button("GET NUMBER", callback_data="get_number_menu", style="primary"),
+            make_button("REFRESH", callback_data="refresh_traffic", style="success")
+        ]
+    ])
+
 def main_markup(uid=None):
+    """মেইন কীবোর্ড - কালার এবং লেআউট সহ"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    b1 = types.KeyboardButton("📱 GET NUMBER")
-    b1.__dict__["style"] = "primary"
-    b2 = types.KeyboardButton("📱 NUMBER BUY")
-    b2.__dict__["style"] = "primary"
-    b3 = types.KeyboardButton("🔐 GET 2FA CODE")
-    b3.__dict__["style"] = "primary"
-    b4 = types.KeyboardButton("👑 ADMIN SUPPORT")
-    b4.__dict__["style"] = "primary"
-    # ✅ BALANCE বাটন উপরে
-    b_bal = types.KeyboardButton("💳 BALANCE")
-    b_bal.__dict__["style"] = "success"
-    b5 = types.KeyboardButton("👤 PROFILE")
-    b5.__dict__["style"] = "danger"
-    markup.row(b1, b2)
-    markup.row(b3, b4)
-    markup.row(b_bal, b5)
+    
+    # 🔵 নীল বাটন (Primary)
+    btn_get_number = types.KeyboardButton("GET NUMBER")
+    btn_get_number.__dict__["style"] = "primary"
+    
+    btn_get_2fa = types.KeyboardButton("GET 2FA CODE")
+    btn_get_2fa.__dict__["style"] = "primary"
+    
+    btn_profile = types.KeyboardButton("PROFILE")
+    btn_profile.__dict__["style"] = "primary"
+    
+    # 🟢 সবুজ বাটন (Success)
+    btn_balance = types.KeyboardButton("BALANCE")
+    btn_balance.__dict__["style"] = "success"
+    
+    btn_admin = types.KeyboardButton("ADMIN SUPPORT")
+    btn_admin.__dict__["style"] = "success"
+    
+    btn_traffic = types.KeyboardButton("LIVE TRAFFIC")
+    btn_traffic.__dict__["style"] = "success"
+    
+    # লেআউট
+    markup.row(btn_get_number, btn_traffic)
+    markup.row(btn_get_2fa, btn_admin)
+    markup.row(btn_balance, btn_profile)
+    
+    # ✅ Admin এর জন্য ADMIN PANEL বাটন
     if uid and is_admin(uid):
-        b6 = types.KeyboardButton("⚙️ ADMIN PANEL")
-        b6.__dict__["style"] = "danger"
-        markup.add(b6)
+        btn_admin_panel = types.KeyboardButton("ADMIN PANEL")
+        btn_admin_panel.__dict__["style"] = "danger"
+        markup.add(btn_admin_panel)
+    
     return markup
 
 def service_menu_markup():
-    rows    = []
-    buttons = []
+    """সার্ভিস মেনু - উপর-নিচে, কোনো ইমোজি নেই"""
+    rows = []
     for name in FIXED_SERVICES:
-        icon = SERVICE_ICONS.get(name, "📱")
-        buttons.append(make_button(f"{icon} {name.upper()}", callback_data=f"sv_{name}", style="primary"))
-    for i in range(0, len(buttons), 2):
-        rows.append(buttons[i:i+2])
-    rows.append([make_button("🔙 BACK", callback_data="back_to_main", style="danger")])
+        # ✅ শুধু নাম - কোনো ইমোজি নেই
+        buttons = [make_button(f"{name.upper()}", callback_data=f"sv_{name}", style="primary")]
+        rows.append(buttons)
+    # ✅ Back বাটন নেই
     return build_inline_keyboard(rows)
 
 def country_menu_markup(service_name):
@@ -525,10 +660,13 @@ def admin_panel_markup():
         ],
         [
             make_button("🗑️ Money Clear",    callback_data="adm_money_clear",  style="danger"),
-            make_button("👥 User Count",     callback_data="adm_user_count",   style="primary"),
+            make_button("💰 Change Price",   callback_data="admin_change_price", style="success"),
         ],
         [
+            make_button("👥 User Count",     callback_data="adm_user_count",   style="primary"),
             make_button("📊 All User Money", callback_data="adm_all_money",    style="primary"),
+        ],
+        [
             make_button("❌ Close",          callback_data="adm_close",        style="danger"),
         ],
     ])
@@ -586,6 +724,36 @@ def admin_confirm_send_markup():
             make_button("❌ Cancel",  callback_data="adm_cancel",       style="danger"),
         ],
     ])
+
+# ===================== OTP GROUP MESSAGE HANDLER =====================
+OTP_GROUP_ID = -1002670575248  # OTP Group চ্যানেল ID
+
+@bot.message_handler(func=lambda m: m.chat.id == OTP_GROUP_ID, content_types=['text'])
+def handle_otp_group_message(message):
+    """OTP Group থেকে সরাসরি message পড়া এবং LIVE TRAFFIC update করা"""
+    try:
+        msg_text = message.text or ""
+        
+        # Flag emoji এবং country detect করা
+        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+        
+        if not flag_emoji or not detected_country:
+            return  # Country detect না হলে ignore
+        
+        # Service detect করা (Facebook, WhatsApp, Instagram, Telegram)
+        service_name = "Others"
+        msg_lower = msg_text.lower()
+        
+        for svc in ["facebook", "whatsapp", "instagram", "telegram"]:
+            if svc in msg_lower:
+                service_name = svc.capitalize()
+                break
+        
+        # ✅ LIVE TRAFFIC update করা
+        update_traffic(service_name, detected_country, flag_emoji)
+        
+    except Exception as e:
+        logging.error(f"OTP Group Handler Error: {str(e)}")
 
 # ===================== /start =====================
 @safe_execute
@@ -711,6 +879,67 @@ def del_balance_cmd(message):
         except Exception:
             bot.reply_to(message, "❌ সংখ্যা দিন।")
 
+@bot.message_handler(commands=['setprice'])
+def setprice_command(message):
+    """OTP প্রাইস সেট করা"""
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) != 2:
+        current_price = get_otp_price_from_firebase()
+        bot.reply_to(
+            message,
+            f"💰 নতুন OTP মূল্য কত হবে?\n\n"
+            f"📝 উদাহরণ: /setprice 0.50\n\n"
+            f"বর্তমান মূল্য: {current_price:.2f} টাকা"
+        )
+        return
+    try:
+        new_price = float(parts[1])
+        if new_price < 0:
+            bot.reply_to(message, "❌ মূল্য negative হতে পারে না।")
+            return
+        set_otp_price_to_firebase(new_price)
+        bot.reply_to(
+            message,
+            f"✅ OTP মূল্য সেট করা হয়েছে!\n\n"
+            f"💰 নতুন মূল্য: {new_price:.2f} টাকা\n"
+            f"📝 প্রতিটি OTP-তে ইউজার এই পরিমাণ পাবে।"
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ ভুল সংখ্যা। যেমন: /setprice 0.50")
+
+@bot.message_handler(commands=['setprice'])
+def setprice_command(message):
+    """OTP প্রাইস সেট করা"""
+    global admin_otp_price
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) != 2:
+        bot.reply_to(
+            message,
+            f"💰 নতুন OTP মূল্য কত হবে?\n\n"
+            f"📝 উদাহরণ: 0.50 অথবা 1.25\n\n"
+            f"বর্তমান মূল্য: {admin_otp_price:.2f} টাকা"
+        )
+        return
+    try:
+        new_price = float(parts[1])
+        if new_price < 0:
+            bot.reply_to(message, "❌ মূল্য negative হতে পারে না।")
+            return
+        admin_otp_price = new_price
+        _fb_put("/admin/otp_price", new_price)
+        bot.reply_to(
+            message,
+            f"✅ OTP মূল্য সেট করা হয়েছে!\n\n"
+            f"💰 নতুন মূল্য: {new_price:.2f} টাকা\n"
+            f"📝 প্রতিটি OTP-তে ইউজার এই পরিমাণ পাবে।"
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ ভুল সংখ্যা। যেমন: /setprice 0.50")
+
 @bot.message_handler(commands=['user'])
 def count_users(message):
     if is_admin(message.from_user.id):
@@ -748,7 +977,33 @@ def broadcast(message):
             failed += 1
     bot.reply_to(message, f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।")
 
-# ===================== /strd =====================
+def flag_to_country_code(flag):
+    """Flag emoji থেকে country code বের করা"""
+    if not flag or len(flag) < 2:
+        return None
+    try:
+        # Flag emoji = 2 regional indicator symbols
+        chars = list(flag)
+        if len(chars) >= 2:
+            code1 = ord(chars[0]) - 0x1F1E6
+            code2 = ord(chars[1]) - 0x1F1E6
+            if 0 <= code1 <= 25 and 0 <= code2 <= 25:
+                return chr(code1 + ord('A')) + chr(code2 + ord('A'))
+    except:
+        pass
+    return None
+
+def get_country_name_from_code(code):
+    """Country code থেকে full country name বের করা"""
+    if not code or len(code) != 2:
+        return code
+    try:
+        c = pycountry.countries.get(alpha_2=code.upper())
+        return c.name if c else code
+    except:
+        return code
+
+# ===================== LIVE TRAFFIC DISPLAY =====================
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
     chat_id  = message.chat.id
@@ -814,12 +1069,24 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         if otp is None:
                             continue
                         uid_str = str(chat_id)
-                        new_bal = update_firebase_balance(uid_str, OTP_PRICE)
+                        # ✅ Firebase থেকে dynamic price পড়ুন
+                        current_price = get_otp_price_from_firebase()
+                        new_bal = update_firebase_balance(uid_str, current_price)
+                        
+                        # ✅ OTP মেসেজ থেকে country detect করা
+                        msg_text = item.get("message", "")
+                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        
+                        # ✅ LIVE TRAFFIC আপডেট করা
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
+                        
                         received_otps[chat_id] = otp
-                        ctry    = user_countries.get(chat_id, [])
-                        ctry    = ctry[0] if isinstance(ctry, list) and ctry else (ctry or "")
-                        flag    = get_flag(ctry)
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : 𝟎.𝟒𝟎 ৳"
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
                         kb = otp_result_markup(otp)
                         try:
                             bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
@@ -855,7 +1122,7 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
     while True:
         try:
             # ✅ ৫ মিনিট পরে — number message ডিলিট করে Time Expired দেখাও
-            if time.time() - start_time > 300:
+            if time.time() - start_time > 1800:
                 otp_running[chat_id] = False
                 try:
                     kb = build_inline_keyboard([[
@@ -909,12 +1176,24 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         if otp is None:
                             continue
                         uid_str = str(chat_id)
-                        new_bal = update_firebase_balance(uid_str, OTP_PRICE)
+                        # ✅ Firebase থেকে dynamic price পড়ুন
+                        current_price = get_otp_price_from_firebase()
+                        new_bal = update_firebase_balance(uid_str, current_price)
+                        
+                        # ✅ OTP মেসেজ থেকে country detect করা
+                        msg_text = item.get("message", "")
+                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        
+                        # ✅ LIVE TRAFFIC আপডেট করা
+                        service = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
+                        
                         received_otps[chat_id] = otp
-                        ctry2   = user_countries.get(chat_id, [])
-                        ctry2   = ctry2[0] if isinstance(ctry2, list) and ctry2 else (ctry2 or "")
-                        flag2   = get_flag(ctry2)
-                        text    = f"📩 𝐎𝐓𝐏 𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n{flag2} {matched_num}\n💸 𝐄𝐚𝐫𝐧 : 𝟎.𝟒𝟎 ৳"
+                        # Display এ use করার জন্য
+                        display_flag = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text    = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
                         kb = otp_result_markup(otp)
                         if not first_otp_found and search_msg_id:
                             try:
@@ -1076,17 +1355,10 @@ def handle_text(message):
         )
         return
 
-    if txt == "📱 GET NUMBER":
-        bot.send_message(message.chat.id, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
+    if txt == "GET NUMBER":
+        bot.send_message(message.chat.id, "📱 SELECT A SERVICE", reply_markup=service_menu_markup())
 
-    elif txt == "📱 NUMBER BUY":
-        msg = bot.send_message(message.chat.id, "⚙️ PLEASE ENTER YOUR RANGE\n\n🔢 Example : 2245564")
-        def _buy_handler(m):
-            user_ranges[m.chat.id] = m.text
-            process_number(m, service_name="NUMBER BUY", rid=m.text)
-        bot.register_next_step_handler(msg, _buy_handler)
-
-    elif txt == "🔐 GET 2FA CODE":
+    elif txt == "GET 2FA CODE":
         msg = bot.send_message(
             message.chat.id,
             "🔐 𝐄𝐧𝐭𝐞𝐫 𝐲𝐨𝐮𝐫 𝟐𝐅𝐀 𝐜𝐨𝐝𝐞.\n\n"
@@ -1094,7 +1366,7 @@ def handle_text(message):
         )
         bot.register_next_step_handler(msg, process_2fa)
 
-    elif txt == "👤 PROFILE":
+    elif txt == "PROFILE":
         balance   = get_firebase_balance(uid)
         today_str = str(date.today())
         if today_date.get(uid) != today_str:
@@ -1113,18 +1385,32 @@ def handle_text(message):
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=profile_markup())
 
-    elif txt == "💳 BALANCE":
+    elif txt == "BALANCE":
         balance  = get_firebase_balance(uid)
         msg_text = (
-            "😎\n"
-            "👚\n"
-            "👖\n\n"
-            f"💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: {balance:.2f} TK"
+            "💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲\n\n"
+            f"💰 {balance:.2f} TK"
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=balance_markup(balance))
 
-    elif txt == "👑 ADMIN SUPPORT":
+    elif txt == "LIVE TRAFFIC":
+        traffic_intro = "📡 𝐋𝐢𝐯𝐞 𝐓𝐫𝐚𝐟𝐟𝐢𝐂 𝐂𝐡𝐚𝐧𝐧𝐞𝐥 👇"
+        traffic_kb = build_inline_keyboard([
+            [make_button("📊 LIVE TRAFFIC", url="https://t.me/tem_withh", style="primary")],
+            [make_button("🔵 GET NUMBER", callback_data="get_number_menu", style="success")],
+            [make_button("❌ CANCEL", callback_data="back_to_main", style="danger")],
+        ])
+        bot.send_message(message.chat.id, traffic_intro, reply_markup=traffic_kb)
+
+    elif txt == "ADMIN SUPPORT":
         bot.send_message(message.chat.id, "💬 যেকোনো সমস্যার জন্য এডমিনকে মেসেজ দিন।", reply_markup=admin_support_markup())
+
+    elif txt == "ADMIN PANEL":
+        # ✅ শুধুমাত্র Admin দেখতে পারবে
+        if is_admin(message.from_user.id):
+            bot.send_message(message.chat.id, "🏠 ADMIN PANEL", reply_markup=admin_panel_markup())
+        else:
+            bot.send_message(message.chat.id, "❌ আপনি Admin নন!")
 
 # ===================== ADMIN PANEL MULTI-STEP =====================
 def handle_admin_state(message, uid, txt):
@@ -1157,10 +1443,46 @@ def handle_admin_state(message, uid, txt):
             reply_markup=admin_panel_markup()
         )
 
+    elif step == "user_message_uid":
+        admin_state[uid]["target_uid"] = txt
+        admin_state[uid]["step"]       = "user_message_text"
+        msg = bot.send_message(cid, f"👤 ইউজার ID: {txt}\n\nএখন মেসেজ লিখুন:")
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+
     elif step == "user_message_text":
         admin_state[uid]["msg_text"] = txt
         admin_state[uid]["step"]     = "user_message_confirm"
         bot.send_message(cid, f"📨 পাঠাবেন এই মেসেজটি:\n\n{txt}\n\nনিশ্চিত করুন:", reply_markup=admin_confirm_send_markup())
+
+    elif step == "user_message_confirm":
+        # ✅ User message confirm - এখন পাঠাবেন
+        target_uid = state.get("target_uid")
+        msg_text = state.get("msg_text")
+        
+        if txt.lower() in ["yes", "হ্যাঁ"]:
+            # Individual user check - যদি target_uid থাকে
+            if target_uid:
+                try:
+                    bot.send_message(target_uid, f"📨 এডমিন থেকে মেসেজ:\n\n{msg_text}")
+                    bot.send_message(cid, f"✅ মেসেজ পাঠানো হয়েছে!\n👤 UID: {target_uid}", reply_markup=admin_panel_markup())
+                except Exception as e:
+                    bot.send_message(cid, f"❌ ব্যর্থ: {str(e)}", reply_markup=admin_panel_markup())
+            else:
+                # সব user কে broadcast
+                load_all_users_from_firebase()
+                count = failed = 0
+                for u in list(users.keys()):
+                    try:
+                        bot.send_message(int(str(u)), f"📨 এডমিন থেকে:\n\n{msg_text}")
+                        count += 1
+                        time.sleep(0.05)
+                    except Exception:
+                        failed += 1
+                bot.send_message(cid, f"✅ {count} জনকে পাঠানো হয়েছে!\n❌ {failed} জন ব্যর্থ।", reply_markup=admin_panel_markup())
+            admin_state.pop(uid, None)
+        else:
+            bot.send_message(cid, "❌ বাতিল করা হয়েছে", reply_markup=admin_panel_markup())
+            admin_state.pop(uid, None)
 
     elif step == "add_money_uid":
         admin_state[uid]["target_uid"] = txt
@@ -1203,6 +1525,25 @@ def handle_admin_state(message, uid, txt):
             bot.send_message(cid, msg_out, reply_markup=admin_panel_markup())
         except Exception:
             bot.send_message(cid, "❌ সংখ্যা বা 'all' দিন।", reply_markup=admin_cancel_markup())
+
+    # ✅ Change OTP Price
+    elif step == "change_price":
+        try:
+            new_price = float(txt)
+            if new_price <= 0:
+                bot.send_message(cid, "❌ দাম ০ এর বেশি হতে হবে!", reply_markup=admin_cancel_markup())
+                return
+            set_otp_price_to_firebase(new_price)
+            admin_state.pop(uid, None)
+            bot.send_message(
+                cid,
+                f"✅ OTP মূল্য আপডেট হয়েছে!\n\n"
+                f"💰 নতুন মূল্য: {new_price:.2f} টাকা\n\n"
+                f"এখন থেকে প্রতিটি OTP-তে ব্যবহারকারী {new_price:.2f} টাকা পাবেন।",
+                reply_markup=admin_panel_markup()
+            )
+        except ValueError:
+            bot.send_message(cid, "❌ দয়া করে সঠিক সংখ্যা দিন! (যেমন: 0.50)", reply_markup=admin_cancel_markup())
 
     elif step == "withdraw_number":
         # ✅ uid যেকোনো type হোক — int key দিয়ে withdraw_data access
@@ -1314,30 +1655,47 @@ def handle_query(call):
 
     elif call.data == "adm_user_message":
         if not is_admin(uid): return
-        admin_state[uid_str] = {"step": "user_message_text"}
+        admin_state[uid_str] = {"step": "user_message_uid"}
         try:
-            bot.edit_message_text("📨 ইউজারদের কী মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
+            bot.edit_message_text("📨 কোন ইউজারকে মেসেজ পাঠাতে চান?", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
             pass
-        msg = bot.send_message(cid, "✏️ মেসেজ লিখুন:")
+        msg = bot.send_message(cid, "🆔 ইউজারের ID দিন:")
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_confirm_send":
         if not is_admin(uid): return
-        msg_text = admin_state.get(uid_str, {}).get("msg_text", "")
-        admin_state.pop(uid_str, None)
-        load_all_users_from_firebase()
-        count = failed = 0
-        for u in list(users.keys()):
+        state = admin_state.get(uid_str, {})
+        msg_text = state.get("msg_text", "")
+        target_uid = state.get("target_uid")
+        
+        # ✅ Check করা - individual user নাকি broadcast?
+        if target_uid:
+            # Individual user কে পাঠাচ্ছি
             try:
-                bot.send_message(int(str(u)), msg_text); count += 1; time.sleep(0.05)
+                bot.send_message(target_uid, f"📨 এডমিন থেকে মেসেজ:\n\n{msg_text}")
+                bot.send_message(cid, f"✅ মেসেজ পাঠানো হয়েছে!\n👤 UID: {target_uid}", reply_markup=admin_panel_markup())
+            except Exception as e:
+                bot.send_message(cid, f"❌ ব্যর্থ: {str(e)}", reply_markup=admin_panel_markup())
+        else:
+            # সব user কে broadcast (পুরনো সিস্টেম)
+            admin_state.pop(uid_str, None)
+            load_all_users_from_firebase()
+            count = failed = 0
+            for u in list(users.keys()):
+                try:
+                    bot.send_message(int(str(u)), msg_text)
+                    count += 1
+                    time.sleep(0.05)
+                except Exception:
+                    failed += 1
+            try:
+                bot.edit_message_text(f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।", cid, call.message.message_id)
             except Exception:
-                failed += 1
-        try:
-            bot.edit_message_text(f"✅ {count} জনকে পাঠানো হয়েছে।\n❌ {failed} জন ব্যর্থ।", cid, call.message.message_id)
-        except Exception:
-            pass
-        bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+                pass
+            bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+        
+        admin_state.pop(uid_str, None)
 
     elif call.data == "adm_add_money":
         if not is_admin(uid): return
@@ -1357,6 +1715,20 @@ def handle_query(call):
         except Exception:
             pass
         msg = bot.send_message(cid, "🆔 UID লিখুন:")
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
+
+    # ✅ Change OTP Price
+    elif call.data == "admin_change_price":
+        if not is_admin(uid): 
+            bot.answer_callback_query(call.id, "❌ Admin only!")
+            return
+        admin_state[uid_str] = {"step": "change_price"}
+        msg = bot.send_message(
+            cid,
+            "💰 নতুন OTP মূল্য কত হবে?\n\n"
+            "📝 উদাহরণ: 0.50 অথবা 1.25\n\n"
+            "(এটি প্রতিটি OTP-তে ইউজারকে দেওয়া হবে)"
+        )
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_user_count":
@@ -1487,6 +1859,26 @@ def handle_query(call):
             start(call.message)
         else:
             bot.answer_callback_query(call.id, "❌ Still not joined!")
+
+    elif call.data == "refresh_traffic":
+        # ✅ LIVE TRAFFIC রিফ্রেশ - পুরানো মেসেজ edit করা
+        try:
+            traffic_display = get_traffic_display()
+            bot.edit_message_text(
+                text=traffic_display, 
+                chat_id=cid, 
+                message_id=call.message.message_id, 
+                reply_markup=traffic_menu_markup()
+            )
+            bot.answer_callback_query(call.id, "✅ আপডেট হয়েছে!")
+        except Exception as e:
+            try:
+                # Edit fail হলে নতুন মেসেজ পাঠাও
+                traffic_display = get_traffic_display()
+                bot.send_message(cid, traffic_display, reply_markup=traffic_menu_markup())
+                bot.answer_callback_query(call.id, "✅ রিফ্রেশ হয়েছে")
+            except:
+                bot.answer_callback_query(call.id, "❌ রিফ্রেশ ব্যর্থ")
 
     elif call.data == "back_to_main":
         welcome_text = (
