@@ -400,11 +400,11 @@ def get_country_name_from_api(country_code):
 
 def update_traffic(service_name, country, flag):
     """OTP আসলে traffic update করা"""
-    global traffic_last_reset
+    global traffic_last_reset, live_traffic  # ✅ global live_traffic যোগ করা
     
     # ১৫ মিনিট পর reset
     if time.time() - traffic_last_reset > 900:
-        live_traffic = {s: {} for s in live_traffic}
+        live_traffic = {s: {} for s in ["Facebook", "WhatsApp", "Instagram", "Telegram", "Others"]}
         traffic_last_reset = time.time()
     
     if service_name not in live_traffic:
@@ -437,6 +437,15 @@ def get_traffic_display():
         display += "\n"
     
     return display
+
+def traffic_menu_markup():
+    """LIVE TRAFFIC মেসেজের জন্য buttons"""
+    return build_inline_keyboard([
+        [
+            make_button("GET NUMBER", callback_data="get_number_menu", style="primary"),
+            make_button("REFRESH", callback_data="refresh_traffic", style="success")
+        ]
+    ])
 
 def main_markup(uid=None):
     """মেইন কীবোর্ড - কালার এবং লেআউট সহ"""
@@ -799,6 +808,37 @@ def del_balance_cmd(message):
             bot.reply_to(message, f"✅ কাটা: {amount} TK\n💰 বাকি: {new_bal} TK")
         except Exception:
             bot.reply_to(message, "❌ সংখ্যা দিন।")
+
+@bot.message_handler(commands=['setprice'])
+def setprice_command(message):
+    """OTP প্রাইস সেট করা"""
+    global admin_otp_price
+    if not is_admin(message.from_user.id):
+        return
+    parts = message.text.split()
+    if len(parts) != 2:
+        bot.reply_to(
+            message,
+            f"💰 নতুন OTP মূল্য কত হবে?\n\n"
+            f"📝 উদাহরণ: 0.50 অথবা 1.25\n\n"
+            f"বর্তমান মূল্য: {admin_otp_price:.2f} টাকা"
+        )
+        return
+    try:
+        new_price = float(parts[1])
+        if new_price < 0:
+            bot.reply_to(message, "❌ মূল্য negative হতে পারে না।")
+            return
+        admin_otp_price = new_price
+        _fb_put("/admin/otp_price", new_price)
+        bot.reply_to(
+            message,
+            f"✅ OTP মূল্য সেট করা হয়েছে!\n\n"
+            f"💰 নতুন মূল্য: {new_price:.2f} টাকা\n"
+            f"📝 প্রতিটি OTP-তে ইউজার এই পরিমাণ পাবে।"
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ ভুল সংখ্যা। যেমন: /setprice 0.50")
 
 @bot.message_handler(commands=['user'])
 def count_users(message):
@@ -1219,7 +1259,7 @@ def handle_text(message):
 
     elif txt == "LIVE TRAFFIC":
         traffic_display = get_traffic_display()
-        bot.send_message(message.chat.id, traffic_display, parse_mode="HTML")
+        bot.send_message(message.chat.id, traffic_display, reply_markup=traffic_menu_markup(), parse_mode="HTML")
 
     elif txt == "ADMIN SUPPORT":
         bot.send_message(message.chat.id, "💬 যেকোনো সমস্যার জন্য এডমিনকে মেসেজ দিন।", reply_markup=admin_support_markup())
@@ -1625,6 +1665,14 @@ def handle_query(call):
             start(call.message)
         else:
             bot.answer_callback_query(call.id, "❌ Still not joined!")
+
+    elif call.data == "refresh_traffic":
+        # ✅ LIVE TRAFFIC রিফ্রেশ করা
+        traffic_display = get_traffic_display()
+        try:
+            bot.edit_message_text(traffic_display, cid, call.message.message_id, reply_markup=traffic_menu_markup())
+        except Exception:
+            bot.send_message(cid, traffic_display, reply_markup=traffic_menu_markup())
 
     elif call.data == "back_to_main":
         welcome_text = (
