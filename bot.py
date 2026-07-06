@@ -467,17 +467,22 @@ def main_markup(uid=None):
     markup.row(btn_get_2fa, btn_admin)
     markup.row(btn_balance, btn_profile)
     
+    # ✅ Admin এর জন্য ADMIN PANEL বাটন
+    if uid and is_admin(uid):
+        btn_admin_panel = types.KeyboardButton("ADMIN PANEL")
+        btn_admin_panel.__dict__["style"] = "danger"
+        markup.add(btn_admin_panel)
+    
     return markup
 
 def service_menu_markup():
-    rows    = []
-    buttons = []
+    """সার্ভিস মেনু - উপর-নিচে, কোনো ইমোজি নেই"""
+    rows = []
     for name in FIXED_SERVICES:
-        icon = SERVICE_ICONS.get(name, "📱")
-        buttons.append(make_button(f"{icon} {name.upper()}", callback_data=f"sv_{name}", style="primary"))
-    for i in range(0, len(buttons), 2):
-        rows.append(buttons[i:i+2])
-    rows.append([make_button("🔙 BACK", callback_data="back_to_main", style="danger")])
+        # ✅ শুধু নাম - কোনো ইমোজি নেই
+        buttons = [make_button(f"{name.upper()}", callback_data=f"sv_{name}", style="primary")]
+        rows.append(buttons)
+    # ✅ Back বাটন নেই
     return build_inline_keyboard(rows)
 
 def country_menu_markup(service_name):
@@ -1204,18 +1209,27 @@ def handle_text(message):
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=profile_markup())
 
-    elif txt == "💳 BALANCE":
+    elif txt == "BALANCE":
         balance  = get_firebase_balance(uid)
         msg_text = (
-            "😎\n"
-            "👚\n"
-            "👖\n\n"
-            f"💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: {balance:.2f} TK"
+            "💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲\n\n"
+            f"💰 {balance:.2f} TK"
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=balance_markup(balance))
 
+    elif txt == "LIVE TRAFFIC":
+        traffic_display = get_traffic_display()
+        bot.send_message(message.chat.id, traffic_display, parse_mode="HTML")
+
     elif txt == "ADMIN SUPPORT":
         bot.send_message(message.chat.id, "💬 যেকোনো সমস্যার জন্য এডমিনকে মেসেজ দিন।", reply_markup=admin_support_markup())
+
+    elif txt == "ADMIN PANEL":
+        # ✅ শুধুমাত্র Admin দেখতে পারবে
+        if is_admin(message.from_user.id):
+            bot.send_message(message.chat.id, "🏠 ADMIN PANEL", reply_markup=admin_panel_markup())
+        else:
+            bot.send_message(message.chat.id, "❌ আপনি Admin নন!")
 
 # ===================== ADMIN PANEL MULTI-STEP =====================
 def handle_admin_state(message, uid, txt):
