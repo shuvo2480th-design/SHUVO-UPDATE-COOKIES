@@ -1175,9 +1175,7 @@ def handle_text(message):
         return
 
     if txt == "GET NUMBER":
-        bot.send_message(message.chat.id, "📱 যে সার্ভিসের নাম্বার প্রয়োজন তা\nসিলেক্ট করুন:", reply_markup=service_menu_markup())
-
-    el
+        bot.send_message(message.chat.id, "📱 SELECT A SERVICE", reply_markup=service_menu_markup())
 
     elif txt == "GET 2FA CODE":
         msg = bot.send_message(
