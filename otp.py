@@ -273,13 +273,13 @@ def get_country_info(number):
 def build_message(masked_number, flag, short_code, service, lang):
     current_time = bd_time()
     return (
-        f"┌────────────────────┐\n"
-        f"│ ✦ {masked_number} ✦\n"
-        f"├────────────────────┤\n"
-        f"│ {flag} {short_code} • 👉 {service}\n"
-        f"├────────────────────┤\n"
-        f"│ ⏰ {current_time} • #{lang}\n"
-        f"└────────────────────┘"
+        f"┏━━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ ✦ {masked_number} ✦   ┃\n"
+        f"┣━━━━━━━━━━━━━━━━━━┫\n"
+        f"┃ {flag} {short_code} • 👉 {service}┃\n"
+        f"┣━━━━━━━━━━━━━━━━━━┫\n"
+        f"┃ ⏰ {current_time} • #{lang} ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━━┛"
     )
 
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
@@ -295,19 +295,26 @@ def send_with_styled_buttons(text, otp_code, range_clean):
             "inline_keyboard": [
                 [
                     {
-                        "text": f"{otp_code}",
+                        "text": f"🎀 {otp_code}",
                         "copy_text": {"text": otp_code},
                         "style": "success"
                     }
                 ],
                 [
                     {
-                        "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
+                        "text": "▰ RANGE COPY ▰",
+                        "copy_text": {"text": range_clean},
+                        "style": "danger"
+                    }
+                ],
+                [
+                    {
+                        "text": "🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
                         "url": PANEL_BOT_URL,
                         "style": "primary"
                     },
                     {
-                        "text": "𝙼𝙴𝚃𝙷𝙾𝙳",
+                        "text": "📲 𝙼𝙴𝚃𝙷𝙾𝙳",
                         "url": RANGE_CHANNEL_URL,
                         "style": "primary"
                     }
@@ -395,4 +402,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
     print("✅ OTP Bot running!")
     while True:
-        time.(60)sleep
+        time.sleep(60)
