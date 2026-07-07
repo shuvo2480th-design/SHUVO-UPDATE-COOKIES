@@ -764,9 +764,15 @@ def start(message):
     register_user(uid, user_name)
     user_names[uid] = user_name
     if not is_joined(message.from_user.id):
+        join_msg = (
+            "🔗 𝐂𝐡𝐚𝐧𝐧𝐞𝐥 𝐕𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐢𝐨𝐧 𝐑𝐞𝐪𝐮𝐢𝐫𝐞𝐝\n\n"
+            "📢 আপনাকে আমাদের চ্যানেলে Join করতে হবে:\n\n"
+            "✨ এই বট ব্যবহার করতে নিচের দুইটি চ্যানেলে Join করুন।\n\n"
+            "✅ Join করার পর VERIFIED বাটনে চাপুন।"
+        )
         bot.send_message(
             message.chat.id,
-            "⚠️ বট ব্যবহার করার আগে নিচের দুইটি চ্যানেলে Join করুন এবং তারপর VERIFIED বাটনে চাপুন।",
+            join_msg,
             reply_markup=join_markup()
         )
         return
@@ -1846,10 +1852,23 @@ def handle_query(call):
 
     elif call.data == "verify_join":
         if is_joined(uid):
-            bot.answer_callback_query(call.id, "✅ You are verified!")
+            bot.answer_callback_query(call.id, "✅ Verified!")
             start(call.message)
         else:
-            bot.answer_callback_query(call.id, "❌ Still not joined!")
+            bot.answer_callback_query(call.id)
+            join_msg = (
+                "❌ আপনি এখনও চ্যানেলে Join করেননি!\n\n"
+                "📢 অনুগ্রহ করে নিচের বাটনে চাপিয়ে চ্যানেলে Join করুন।\n\n"
+                "✅ তারপর VERIFIED বাটনে চাপুন।"
+            )
+            try:
+                bot.edit_message_text(
+                    join_msg,
+                    cid, call.message.message_id,
+                    reply_markup=join_markup()
+                )
+            except Exception:
+                bot.send_message(cid, join_msg, reply_markup=join_markup())
 
     elif call.data == "refresh_traffic":
         # ✅ LIVE TRAFFIC রিফ্রেশ - পুরানো মেসেজ edit করা
@@ -1993,7 +2012,20 @@ def handle_query(call):
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
         if balance < 50:
-            bot.answer_callback_query(call.id, "❌ Min 50 TK!"); return
+            insufficient_msg = (
+                "❌ 𝐈𝐧𝐬𝐮𝐟𝐟𝐢𝐜𝐢𝐞𝐧𝐭 𝐁𝐚𝐥𝐚𝐧𝐜𝐞\n\n"
+                f"💰 আপনার বর্তমান ব্যালেন্স: {balance:.2f} TK\n\n"
+                "⚠️ Minimum 50 TK প্রয়োজন\n\n"
+                "📌 আরও OTP সংগ্রহ করুন এবং পুনরায় চেষ্টা করুন।"
+            )
+            try:
+                bot.edit_message_text(
+                    insufficient_msg,
+                    cid, call.message.message_id
+                )
+            except Exception:
+                bot.send_message(cid, insufficient_msg)
+            return
         try:
             bot.edit_message_text(
                 f"🏦 Select method\n\n💰 আপনার ব্যালেন্স: {balance:.2f} TK",
