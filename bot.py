@@ -1861,14 +1861,13 @@ def handle_query(call):
                 " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
                 "♾️ POWERED BY Shuvoᯓᡣ𐭩"
             )
+            # ✅ Join message delete করো
             try:
-                bot.edit_message_text(
-                    welcome_text,
-                    cid, call.message.message_id,
-                    reply_markup=main_markup()
-                )
+                bot.delete_message(cid, call.message.message_id)
             except Exception:
-                bot.send_message(cid, welcome_text, reply_markup=main_markup())
+                pass
+            # ✅ নতুন welcome message পাঠাও
+            bot.send_message(cid, welcome_text, reply_markup=main_markup())
         else:
             # ❌ Not joined - শুধু popup alert দেখাবে, কোনো message আসবে না
             bot.answer_callback_query(
@@ -2027,7 +2026,7 @@ def handle_query(call):
             )
             kb = build_inline_keyboard([
                 [make_button("🔵 GET NUMBER", callback_data="get_number_menu", style="success")],
-                [make_button("🔙 BACK", callback_data="back_to_main", style="danger")],
+                [make_button("🔙 BACK", callback_data="back_balance", style="danger")],
             ])
             try:
                 bot.edit_message_text(
