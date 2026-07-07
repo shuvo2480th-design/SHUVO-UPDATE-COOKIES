@@ -1852,23 +1852,30 @@ def handle_query(call):
 
     elif call.data == "verify_join":
         if is_joined(uid):
+            # ✅ Verified - welcome message দেখাবে (same message edit হবে)
             bot.answer_callback_query(call.id, "✅ Verified!")
-            start(call.message)
-        else:
-            bot.answer_callback_query(call.id)
-            join_msg = (
-                "❌ আপনি এখনও চ্যানেলে Join করেননি!\n\n"
-                "📢 অনুগ্রহ করে নিচের বাটনে চাপিয়ে চ্যানেলে Join করুন।\n\n"
-                "✅ তারপর VERIFIED বাটনে চাপুন।"
+            welcome_text = (
+                "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
+                " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+                "🤖 WELCOME TO TEAM WITH 3.0 NUMBER BOT\n\n"
+                " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
+                "♾️ POWERED BY Shuvoᯓᡣ𐭩"
             )
             try:
                 bot.edit_message_text(
-                    join_msg,
+                    welcome_text,
                     cid, call.message.message_id,
-                    reply_markup=join_markup()
+                    reply_markup=main_markup()
                 )
             except Exception:
-                bot.send_message(cid, join_msg, reply_markup=join_markup())
+                bot.send_message(cid, welcome_text, reply_markup=main_markup())
+        else:
+            # ❌ Not joined - শুধু popup alert দেখাবে, কোনো message আসবে না
+            bot.answer_callback_query(
+                call.id, 
+                "❌ চ্যানেলে Join করুন তারপর Verified করুন!",
+                show_alert=True
+            )
 
     elif call.data == "refresh_traffic":
         # ✅ LIVE TRAFFIC রিফ্রেশ - পুরানো মেসেজ edit করা
@@ -2018,13 +2025,17 @@ def handle_query(call):
                 "⚠️ Minimum 50 TK প্রয়োজন\n\n"
                 "📌 আরও OTP সংগ্রহ করুন এবং পুনরায় চেষ্টা করুন।"
             )
+            kb = build_inline_keyboard([
+                [make_button("🔙 BACK", callback_data="back_to_main", style="danger")],
+            ])
             try:
                 bot.edit_message_text(
                     insufficient_msg,
-                    cid, call.message.message_id
+                    cid, call.message.message_id,
+                    reply_markup=kb
                 )
             except Exception:
-                bot.send_message(cid, insufficient_msg)
+                bot.send_message(cid, insufficient_msg, reply_markup=kb)
             return
         try:
             bot.edit_message_text(
