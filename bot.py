@@ -1852,8 +1852,8 @@ def handle_query(call):
 
     elif call.data == "verify_join":
         if is_joined(uid):
-            # ✅ Verified - welcome message দেখাবে (same message edit হবে)
-            bot.answer_callback_query(call.id, "✅ Verified!")
+            # ✅ Verified - popup alert দেখাবে
+            bot.answer_callback_query(call.id, "✅ Verified Success!", show_alert=True)
             welcome_text = (
                 "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
                 " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
@@ -2026,6 +2026,7 @@ def handle_query(call):
                 "📌 আরও OTP সংগ্রহ করুন এবং পুনরায় চেষ্টা করুন।"
             )
             kb = build_inline_keyboard([
+                [make_button("🔵 GET NUMBER", callback_data="get_number_menu", style="success")],
                 [make_button("🔙 BACK", callback_data="back_to_main", style="danger")],
             ])
             try:
