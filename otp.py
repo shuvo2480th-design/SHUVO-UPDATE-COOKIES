@@ -274,11 +274,11 @@ def build_message(masked_number, flag, short_code, service, lang):
     current_time = bd_time()
     return (
         f"┌────────────────────┐\n"
-        f"│ ✦ {masked_number} ✦   │\n"
+        f"│ ✦ {masked_number} ✦\n"
         f"├────────────────────┤\n"
-        f"│ {flag} {short_code} • 👉 {service}│\n"
+        f"│ {flag} {short_code} • 👉 {service}\n"
         f"├────────────────────┤\n"
-        f"│ ⏰ {current_time} • #{lang} │\n"
+        f"│ ⏰ {current_time} • #{lang}\n"
         f"└────────────────────┘"
     )
 
