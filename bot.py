@@ -839,9 +839,10 @@ def del_service(message):
 
 @bot.message_handler(commands=['price'])
 def price_command(message):
+    current_price = get_otp_price_from_firebase()
     bot.send_message(
         message.chat.id,
-        f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+        f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {current_price:.2f} 𝐓𝐊",
         reply_markup=otp_price_markup()
     )
 
@@ -1978,14 +1979,16 @@ def handle_query(call):
             threading.Thread(target=auto_check_otp, args=(cid, list(nums), search_msg.message_id), daemon=True).start()
 
     elif call.data == "otp_price":
+        current_price = get_otp_price_from_firebase()
+        price_text = f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {current_price:.2f} 𝐓𝐊"
         try:
             bot.edit_message_text(
-                f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊",
+                price_text,
                 cid, call.message.message_id,
                 reply_markup=otp_price_markup()
             )
         except Exception:
-            bot.send_message(cid, f"💰 𝐓𝐨𝐝𝐚𝐲 𝐎𝐓𝐏 𝐏𝐫𝐢𝐜𝐞\n\n📌 𝟏 𝐎𝐓𝐏 = {OTP_PRICE:.2f} 𝐓𝐊", reply_markup=otp_price_markup())
+            bot.send_message(cid, price_text, reply_markup=otp_price_markup())
 
     elif call.data == "withdraw":
         balance = get_firebase_balance(uid)
