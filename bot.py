@@ -1068,6 +1068,9 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         otp = extract_otp(item.get("message", ""), matched_num)
                         if otp is None:
                             continue
+                        
+                            continue
+                        
                         uid_str = str(chat_id)
                         # ✅ Firebase থেকে dynamic price পড়ুন
                         current_price = get_otp_price_from_firebase()
@@ -1175,6 +1178,9 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         otp = extract_otp(item.get("message", ""), matched_num)
                         if otp is None:
                             continue
+                        
+                            continue
+                        
                         uid_str = str(chat_id)
                         # ✅ Firebase থেকে dynamic price পড়ুন
                         current_price = get_otp_price_from_firebase()
@@ -1388,8 +1394,9 @@ def handle_text(message):
     elif txt == "BALANCE":
         balance  = get_firebase_balance(uid)
         msg_text = (
-            "💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲\n\n"
-            f"💰 {balance:.2f} TK"
+            "💳 𝐘𝐎𝐔𝐑 𝐁𝐀𝐋𝐀𝐍𝐂𝐄\n\n"
+            f"💰 𝐁𝐀𝐋𝐀𝐍𝐂𝐄 {balance:.2f} 𝐓𝐊\n\n"
+            "✨ 𝐀𝐯𝐚𝐢𝐥𝐚𝐛𝐥𝐞 𝐁𝐚𝐥𝐚𝐧𝐜𝐞"
         )
         bot.send_message(message.chat.id, msg_text, reply_markup=balance_markup(balance))
 
@@ -1901,8 +1908,9 @@ def handle_query(call):
     elif call.data == "back_balance":
         balance  = get_firebase_balance(uid_str)
         msg_text = (
-            "😎\n👚\n👖\n\n"
-            f"💳 𝗬𝗼𝘂𝗿 𝗕𝗮𝗹𝗮𝗻𝗰𝗲: {balance:.2f} TK"
+            "💳 𝐘𝐎𝐔𝐑 𝐁𝐀𝐋𝐀𝐍𝐂𝐄\n\n"
+            f"💰 𝐁𝐀𝐋𝐀𝐍𝐂𝐄 {balance:.2f} 𝐓𝐊\n\n"
+            "✨ 𝐀𝐯𝐚𝐢𝐥𝐚𝐛𝐥𝐞 𝐁𝐚𝐥𝐚𝐧𝐜𝐞"
         )
         try:
             bot.edit_message_text(msg_text, cid, call.message.message_id, reply_markup=balance_markup(balance))
