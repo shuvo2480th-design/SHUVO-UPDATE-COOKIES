@@ -273,13 +273,13 @@ def get_country_info(number):
 def build_message(masked_number, flag, short_code, service, lang):
     current_time = bd_time()
     return (
-        f"┏━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃ ✦ {masked_number} ✦   ┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ {flag} {short_code} • 👉 {service}┃\n"
-        f"┣━━━━━━━━━━━━━━━━━━┫\n"
-        f"┃ ⏰ {current_time} • #{lang} ┃\n"
-        f"┗━━━━━━━━━━━━━━━━━━┛"
+        f"┌────────────────────┐\n"
+        f"│ ✦ {masked_number} ✦   │\n"
+        f"├────────────────────┤\n"
+        f"│ {flag} {short_code} • 👉 {service}│\n"
+        f"├────────────────────┤\n"
+        f"│ ⏰ {current_time} • #{lang} │\n"
+        f"└────────────────────┘"
     )
 
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
@@ -295,7 +295,7 @@ def send_with_styled_buttons(text, otp_code, range_clean):
             "inline_keyboard": [
                 [
                     {
-                        "text": f"🎀 {otp_code}",
+                        "text": f"{otp_code}",
                         "copy_text": {"text": otp_code},
                         "style": "success"
                     }
@@ -309,12 +309,12 @@ def send_with_styled_buttons(text, otp_code, range_clean):
                 ],
                 [
                     {
-                        "text": "🤖 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
+                        "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
                         "url": PANEL_BOT_URL,
                         "style": "primary"
                     },
                     {
-                        "text": "📲 𝙼𝙴𝚃𝙷𝙾𝙳",
+                        "text": "𝙼𝙴𝚃𝙷𝙾𝙳",
                         "url": RANGE_CHANNEL_URL,
                         "style": "primary"
                     }
