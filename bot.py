@@ -252,8 +252,15 @@ def extract_otp(message_text, phone_number=None):
         return None
     phone_digits = clean_number(phone_number) if phone_number else ""
 
+    # নোট: re.ASCII ব্যবহার করা হচ্ছে কারণ Python-এ ডিফল্টভাবে \b (word boundary)
+    # Unicode-aware — জাপানি/চাইনিজ/কোরিয়ান অক্ষরকেও "word character" ধরে নেয়।
+    # ফলে "09977がFacebook..." এর মতো মেসেজে (OTP-এর ঠিক পরেই কোনো স্পেস ছাড়া
+    # CJK অক্ষর থাকলে) boundary ধরতে ব্যর্থ হতো, আর ভুল OTP বের হতো।
+    # re.ASCII দিলে শুধু ASCII অক্ষরকেই word character ধরবে, তাই boundary
+    # সঠিকভাবে কাজ করবে।
+
     # STEP 1: "975-802" বা "975 802" এর মতো dash/space দেওয়া OTP ধরো
-    dashed_matches = re.findall(r'\b(\d{3,5}[-\s]\d{3,5})\b', message_text)
+    dashed_matches = re.findall(r'\b(\d{3,5}[-\s]\d{3,5})\b', message_text, re.ASCII)
     for match in dashed_matches:
         joined = re.sub(r'[-\s]', '', match)
         if not joined.isdigit():
@@ -264,7 +271,7 @@ def extract_otp(message_text, phone_number=None):
             return joined
 
     # STEP 2: "138 740" এর মতো spaced OTP ধরো
-    spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text)
+    spaced_matches = re.findall(r'\b(\d[\d ]{2,12}\d)\b', message_text, re.ASCII)
     for match in spaced_matches:
         joined = match.replace(" ", "")
         if not joined.isdigit():
@@ -280,7 +287,7 @@ def extract_otp(message_text, phone_number=None):
         r'(\d{4,8})[^\d]*(?:is your|as your|কোড)',
     ]
     for pattern in keyword_patterns:
-        match = re.search(pattern, message_text, re.IGNORECASE)
+        match = re.search(pattern, message_text, re.IGNORECASE | re.ASCII)
         if match:
             candidate = match.group(1)
             if phone_digits and candidate in phone_digits:
@@ -288,7 +295,7 @@ def extract_otp(message_text, phone_number=None):
             return candidate
 
     # STEP 4: সাধারণ ৪-১০ digit
-    candidates = re.findall(r'\b(\d{4,10})\b', message_text)
+    candidates = re.findall(r'\b(\d{4,10})\b', message_text, re.ASCII)
     for candidate in candidates:
         if phone_digits:
             if candidate in phone_digits:
@@ -1058,10 +1065,11 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                             continue
                         # check against all current numbers
                         matched_num = None
-                        for num in current_nums:
+                        matched_idx = None
+                        for idx, num in enumerate(current_nums):
                             cur = clean_number(num)
                             if api_num in cur or cur in api_num:
-                                matched_num = num; break
+                                matched_num = num; matched_idx = idx; break
                         if not matched_num:
                             continue
                         if msg_id in used_otps.get(chat_id, []):
@@ -1083,9 +1091,11 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                         current_price = get_otp_price_from_firebase()
                         new_bal = update_firebase_balance(uid_str, current_price)
                         
-                        # ✅ OTP মেসেজ থেকে country detect করা
-                        msg_text = item.get("message", "")
-                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
+                        # (SMS টেক্সটে flag emoji খোঁজা ভুল ছিল, কারণ SMS-এ কখনো flag emoji থাকে না)
+                        country_list = user_countries.get(chat_id, [])
+                        detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
+                        flag_emoji = get_flag(detected_country) if detected_country else None
                         
                         # ✅ LIVE TRAFFIC আপডেট করা
                         service = user_service.get(chat_id, "Others")
@@ -1167,10 +1177,11 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         api_num = clean_number(item.get("number", ""))
                         # ২ নাম্বারের যেকোনো একটায় match করলেই চলবে
                         matched_num = None
-                        for num in phone_numbers:
+                        matched_idx = None
+                        for idx, num in enumerate(phone_numbers):
                             my_num = clean_number(num)
                             if api_num and my_num and (api_num in my_num or my_num in api_num):
-                                matched_num = num; break
+                                matched_num = num; matched_idx = idx; break
                         if not matched_num:
                             continue
                         msg_id = item.get("otp_id") or item.get("id")
@@ -1193,9 +1204,11 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
                         current_price = get_otp_price_from_firebase()
                         new_bal = update_firebase_balance(uid_str, current_price)
                         
-                        # ✅ OTP মেসেজ থেকে country detect করা
-                        msg_text = item.get("message", "")
-                        flag_emoji, detected_country = extract_country_from_otp_message(msg_text)
+                        # ✅ নাম্বার কেনার সময়ই যে country সেভ করা হয়েছিল সেটা থেকে flag বের করা
+                        # (SMS টেক্সটে flag emoji খোঁজা ভুল ছিল, কারণ SMS-এ কখনো flag emoji থাকে না)
+                        country_list = user_countries.get(chat_id, [])
+                        detected_country = country_list[matched_idx] if (matched_idx is not None and matched_idx < len(country_list)) else None
+                        flag_emoji = get_flag(detected_country) if detected_country else None
                         
                         # ✅ LIVE TRAFFIC আপডেট করা
                         service = user_service.get(chat_id, "Others")
