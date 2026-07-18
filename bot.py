@@ -34,17 +34,28 @@ def keep_alive():
     t.start()
 
 # ===================== কনফিগারেশন =====================
-API_KEY      = "MUBTR1MKUBO"
+# ===================== STEX CONFIG =====================
+STEX_API_KEY  = "MUBTR1MKUBO"
+STEX_BASE_URL = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
+STEX_HEADERS  = {"mauthapi": STEX_API_KEY}
+
+# ===================== NEXUS CONFIG =====================
+NEXUS_API_KEY  = "nx_vSNXnzmDoioy9vFBpaFoLEXeBgRMxVMGeD09jQ"
+NEXUS_BASE_URL = "https://v2.nexus-x.site/api/v1"
+NEXUS_HEADERS  = {"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"}
+
+# ===================== COMMON CONFIG =====================
+API_KEY      = STEX_API_KEY
 BOT_TOKEN    = "8510677584:AAFnl5RaC0d022rokBTBpljmSapf1u3qMo4"
-BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
-HEADERS      = {"mauthapi": API_KEY}
+BASE_URL     = STEX_BASE_URL
+HEADERS      = STEX_HEADERS
 ADMIN_ID     = "6136815573"
 GROUP_URL    = "https://t.me/tem_withh"
 FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
-
-FIXED_SERVICES = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
+FIXED_SERVICES    = ["Facebook", "WhatsApp", "Telegram", "Instagram"]
+PANELS            = ["stex", "nexus"]  # ২টা প্যানেল
 
 SERVICE_ICONS = {
     "Facebook":  "F",
@@ -66,8 +77,10 @@ bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=20)
 users           = {}
 user_ranges     = {}
 user_service    = {}
+user_panel      = {}       # chat_id → "stex" or "nexus"
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
 user_countries  = {}       # chat_id → [country1, country2]
+user_number_ids = {}       # chat_id → [api_id1, api_id2]  (nexus only)
 received_otps   = {}
 used_otps       = {}
 otp_running     = {}
@@ -84,7 +97,11 @@ today_date      = {}       # uid_str → date string
 
 global_used_otps = {}
 
-service_countries = {s: [] for s in FIXED_SERVICES}
+# {panel: {service: [countries]}} — stex ও nexus আলাদা
+service_countries = {
+    "stex":  {s: [] for s in FIXED_SERVICES},
+    "nexus": {s: [] for s in FIXED_SERVICES},
+}
 
 # ===================== COLORED BUTTON HELPER =====================
 def make_button(text, callback_data=None, url=None, style="primary", copy_text_val=None):
@@ -215,17 +232,18 @@ def load_all_users_from_firebase():
                 user_names[uid] = val["name"]
 
 def load_countries_from_firebase():
-    for sname in FIXED_SERVICES:
-        data = _fb_get(f"/service_data/{sname}")
-        if isinstance(data, list):
-            service_countries[sname] = [c for c in data if isinstance(c, dict) and "name" in c and "rid" in c]
-        elif isinstance(data, dict):
-            service_countries[sname] = [v for v in data.values() if isinstance(v, dict) and "name" in v and "rid" in v]
-        else:
-            service_countries[sname] = []
+    for panel in PANELS:
+        for sname in FIXED_SERVICES:
+            data = _fb_get(f"/service_data/{panel}/{sname}")
+            if isinstance(data, list):
+                service_countries[panel][sname] = [c for c in data if isinstance(c, dict) and "name" in c and "rid" in c]
+            elif isinstance(data, dict):
+                service_countries[panel][sname] = [v for v in data.values() if isinstance(v, dict) and "name" in v and "rid" in v]
+            else:
+                service_countries[panel][sname] = []
 
-def save_countries_to_firebase(service_name):
-    _fb_put(f"/service_data/{service_name}", service_countries[service_name])
+def save_countries_to_firebase(panel, service_name):
+    _fb_put(f"/service_data/{panel}/{service_name}", service_countries[panel][service_name])
 
 # ===================== STARTUP =====================
 load_all_users_from_firebase()
@@ -532,26 +550,34 @@ def main_markup(uid=None):
     return markup
 
 def service_menu_markup():
-    """সার্ভিস মেনু - উপর-নিচে, কোনো ইমোজি নেই"""
+    """সার্ভিস মেনু — service সিলেক্ট, তারপর panel সিলেক্ট"""
     rows = []
     for name in FIXED_SERVICES:
-        # ✅ শুধু নাম - কোনো ইমোজি নেই
         buttons = [make_button(f"{name.upper()}", callback_data=f"sv_{name}", style="primary")]
         rows.append(buttons)
-    # ✅ Back বাটন নেই
     return build_inline_keyboard(rows)
 
-def country_menu_markup(service_name):
+def panel_service_markup(service_name):
+    """Service সিলেক্ট হওয়ার পর panel সিলেক্ট"""
+    return build_inline_keyboard([
+        [
+            make_button("📡 STEX",  callback_data=f"panel_stex_{service_name}",  style="primary"),
+            make_button("🔗 NEXUS", callback_data=f"panel_nexus_{service_name}", style="success"),
+        ],
+        [make_button("🔙 Back", callback_data="back_to_services", style="danger")],
+    ])
+
+def country_menu_markup(service_name, panel="stex"):
     rows      = []
-    countries = service_countries.get(service_name, [])
+    countries = service_countries.get(panel, {}).get(service_name, [])
     if not countries:
         rows.append([make_button("⚠️ কোনো দেশ এড হয়নি", callback_data="noop", style="danger")])
     else:
         for idx, c in enumerate(countries):
             flag  = get_flag(c["name"])
             label = f"{flag} {c['name']}" if flag else c["name"]
-            rows.append([make_button(label, callback_data=f"ct_{service_name}__{idx}", style="success")])
-    rows.append([make_button("🔙 Back", callback_data="back_to_services", style="danger")])
+            rows.append([make_button(label, callback_data=f"ct_{panel}__{service_name}__{idx}", style="success")])
+    rows.append([make_button("🔙 Back", callback_data=f"back_panel_{panel}_{service_name}", style="danger")])
     return build_inline_keyboard(rows)
 
 def number_assigned_markup(nums, countries, back_cb):
@@ -658,8 +684,8 @@ def admin_support_markup():
 def admin_panel_markup():
     return build_inline_keyboard([
         [
-            make_button("🌍 Add Country",    callback_data="adm_add_country",  style="success"),
-            make_button("🗑️ Del Country",    callback_data="adm_del_country",  style="danger"),
+            make_button("🌍 Add Country",    callback_data="adm_panel_select_add",  style="success"),
+            make_button("🗑️ Del Country",    callback_data="adm_panel_select_del",  style="danger"),
         ],
         [
             make_button("📨 User Message",   callback_data="adm_user_message", style="primary"),
@@ -678,33 +704,43 @@ def admin_panel_markup():
         ],
     ])
 
-def admin_del_country_service_markup():
+def admin_del_country_service_markup(panel="stex"):
     """Delete Country — সার্ভিস সিলেক্ট"""
     return build_inline_keyboard([
         [
-            make_button("🔵 Facebook",  callback_data="adm_delcountry_Facebook",  style="primary"),
-            make_button("💬 WhatsApp",  callback_data="adm_delcountry_WhatsApp",  style="success"),
+            make_button("🔵 Facebook",  callback_data=f"adm_delcountry_{panel}_Facebook",  style="primary"),
+            make_button("💬 WhatsApp",  callback_data=f"adm_delcountry_{panel}_WhatsApp",  style="success"),
         ],
         [
-            make_button("✈️ Telegram",  callback_data="adm_delcountry_Telegram",  style="primary"),
-            make_button("📸 Instagram", callback_data="adm_delcountry_Instagram", style="primary"),
+            make_button("✈️ Telegram",  callback_data=f"adm_delcountry_{panel}_Telegram",  style="primary"),
+            make_button("📸 Instagram", callback_data=f"adm_delcountry_{panel}_Instagram", style="primary"),
         ],
         [make_button("❌ Cancel", callback_data="adm_cancel", style="danger")],
     ])
 
-def admin_del_country_list_markup(service_name):
-    """ডিলিট করার জন্য দেশের লিস্ট"""
+def admin_del_country_list_markup(service_name, panel="stex"):
+    """ডিলিট করার জন্য দেশের লিস্ট — panel আলাদা"""
     rows      = []
-    countries = service_countries.get(service_name, [])
+    countries = service_countries.get(panel, {}).get(service_name, [])
     if not countries:
         rows.append([make_button("⚠️ কোনো দেশ নেই", callback_data="noop", style="danger")])
     else:
         for idx, c in enumerate(countries):
             flag  = get_flag(c["name"])
             label = f"{flag} {c['name']}" if flag else c["name"]
-            rows.append([make_button(label, callback_data=f"adm_delcountry_do_{service_name}__{idx}", style="danger")])
-    rows.append([make_button("🔙 Back", callback_data="adm_del_country", style="primary")])
+            rows.append([make_button(label, callback_data=f"adm_delcountry_do_{panel}__{service_name}__{idx}", style="danger")])
+    rows.append([make_button("🔙 Back", callback_data=f"adm_del_country_{panel}", style="primary")])
     return build_inline_keyboard(rows)
+
+def panel_select_markup(action):
+    """Panel সিলেক্ট করার markup"""
+    return build_inline_keyboard([
+        [
+            make_button("📡 STEX",  callback_data=f"adm_panel_{action}_stex",  style="primary"),
+            make_button("🔗 NEXUS", callback_data=f"adm_panel_{action}_nexus", style="success"),
+        ],
+        [make_button("❌ Cancel", callback_data="adm_cancel", style="danger")],
+    ])
 
 def admin_service_select_markup(action):
     return build_inline_keyboard([
@@ -1247,6 +1283,179 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
             time.sleep(2)
 
 # ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
+# ===================== NEXUS NUMBER PROCESSING =====================
+def _get_otp_text_field(otp_entry):
+    """Nexus OTP entry থেকে message text বের করা"""
+    return (otp_entry.get("text") or otp_entry.get("message") or otp_entry.get("body") or "")
+
+def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=None):
+    """Nexus প্যানেল থেকে নাম্বার নেওয়া"""
+    chat_id = message.chat.id
+    if not rid:
+        rid = user_ranges.get(chat_id, "8801")
+
+    loading_text = "⏳ PLEASE WAIT...\n🔗 NEXUS NUMBER GENERATING..."
+    if edit_msg:
+        try:
+            bot.edit_message_text(loading_text, chat_id, edit_msg.message_id)
+            status_id = edit_msg.message_id
+        except Exception:
+            status_id = bot.send_message(chat_id, loading_text).message_id
+    else:
+        status_id = bot.send_message(chat_id, loading_text).message_id
+
+    nums = []; countries = []; ids = []
+    max_retries = 5
+
+    for attempt in range(max_retries):
+        try:
+            r    = requests.post(
+                f"{NEXUS_BASE_URL}/numbers",
+                headers=NEXUS_HEADERS,
+                json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
+                timeout=15
+            )
+            data = r.json()
+            if data.get("ok"):
+                full_num = str(data.get("number", "")).replace("+", "")
+                country  = data.get("country", "Unknown")
+                api_id   = data.get("id")
+                if full_num not in nums:
+                    nums.append(full_num); countries.append(country); ids.append(api_id)
+                break
+            if attempt < max_retries - 1:
+                try: bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt+2}/{max_retries})", chat_id, status_id)
+                except Exception: pass
+                time.sleep(3)
+        except Exception:
+            if attempt < max_retries - 1: time.sleep(3)
+
+    if not nums:
+        try: bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না।", chat_id, status_id, reply_markup=try_again_markup())
+        except Exception: pass
+        return
+
+    # ২য় নাম্বার
+    for attempt in range(3):
+        try:
+            r    = requests.post(f"{NEXUS_BASE_URL}/numbers", headers=NEXUS_HEADERS,
+                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False}, timeout=15)
+            data = r.json()
+            if data.get("ok"):
+                full_num2 = str(data.get("number", "")).replace("+", "")
+                country2  = data.get("country", "Unknown")
+                api_id2   = data.get("id")
+                if full_num2 not in nums:
+                    nums.append(full_num2); countries.append(country2); ids.append(api_id2)
+                break
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+
+    otp_running[chat_id]     = False
+    strd_running[chat_id]    = False
+    time.sleep(0.5)
+    user_numbers[chat_id]    = nums
+    user_countries[chat_id]  = countries
+    user_number_ids[chat_id] = ids
+    user_ranges[chat_id]     = rid
+    user_service[chat_id]    = service_name
+    user_panel[chat_id]      = "nexus"
+    received_otps[chat_id]   = None
+    used_otps[chat_id]       = []
+
+    back_cb      = f"back_to_country_nexus_{service_name}"
+    country_show = countries[0] if countries else "Unknown"
+    flag         = get_flag(country_show)
+
+    msg_text = "⏳ WAITING FOR OTP..."
+    kb = build_inline_keyboard(
+        [[make_button(f"{get_flag(countries[i] if i < len(countries) else '')}  +{num}", style="primary", copy_text_val=f"+{num}")] for i, num in enumerate(nums)]
+        + [[make_button(f"{flag} {country_show}", callback_data="noop", style="success"),
+            make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")]]
+        + [[make_button("🔄 Change Number", callback_data="change_num", style="primary"),
+            make_button("🔐 OTP GROUP", url=GROUP_URL, style="primary")],
+           [make_button("🔙 BACK", callback_data=back_cb, style="danger")]]
+    )
+    try: bot.edit_message_text(msg_text, chat_id, status_id, reply_markup=kb)
+    except Exception: bot.send_message(chat_id, msg_text, reply_markup=kb)
+
+    threading.Thread(target=auto_check_otp_nexus, args=(chat_id, list(nums), list(ids), status_id), daemon=True).start()
+
+
+def auto_check_otp_nexus(chat_id, phone_numbers, api_ids, search_msg_id=None):
+    """Nexus OTP চেক — প্রতিটা নাম্বারের নিজস্ব API ID দিয়ে"""
+    if otp_running.get(chat_id): return
+    otp_running[chat_id] = True
+    first_otp_found = False
+    if chat_id not in used_otps: used_otps[chat_id] = []
+    if chat_id not in global_used_otps: global_used_otps[chat_id] = set()
+    start_time = time.time()
+
+    while True:
+        try:
+            if time.time() - start_time > 1800:
+                otp_running[chat_id] = False
+                try: bot.send_message(chat_id, "⏰ Time Expired!", reply_markup=build_inline_keyboard([[make_button("📱 GET NUMBER", callback_data="get_number_menu", style="primary")]]))
+                except Exception: pass
+                return
+            current_nums = user_numbers.get(chat_id, [])
+            if not current_nums or not any(n in current_nums for n in phone_numbers):
+                otp_running[chat_id] = False; return
+            if user_panel.get(chat_id) != "nexus":
+                otp_running[chat_id] = False; return
+
+            all_items = []
+            id_to_number = {api_ids[i]: phone_numbers[i] for i in range(len(api_ids)) if i < len(phone_numbers)}
+            for api_id in api_ids:
+                if not api_id: continue
+                try:
+                    r    = requests.get(f"{NEXUS_BASE_URL}/numbers/{api_id}", headers=NEXUS_HEADERS, timeout=10)
+                    resp = r.json()
+                    for otp_entry in (resp.get("otps") or []):
+                        all_items.append({"otp_id": otp_entry.get("id"), "number": id_to_number.get(api_id, ""), "message": _get_otp_text_field(otp_entry)})
+                except Exception: continue
+
+            for item in all_items:
+                msg_id = item.get("otp_id")
+                if not msg_id or msg_id in global_used_otps.get(chat_id, set()): continue
+                matched_num = None; matched_idx = None
+                api_num = clean_number(item.get("number", ""))
+                for idx, num in enumerate(phone_numbers):
+                    cur = clean_number(num)
+                    if api_num and cur and (api_num in cur or cur in api_num):
+                        matched_num = num; matched_idx = idx; break
+                if not matched_num: continue
+                if msg_id in used_otps.get(chat_id, []): continue
+                used_otps[chat_id].append(msg_id)
+                global_used_otps[chat_id].add(msg_id)
+                otp = extract_otp(item.get("message", ""), matched_num)
+                if otp is None: continue
+                uid_str = str(chat_id)
+                current_price = get_otp_price_from_firebase()
+                new_bal = update_firebase_balance(uid_str, current_price)
+                country_list = user_countries.get(chat_id, [])
+                detected_country = country_list[matched_idx] if matched_idx is not None and matched_idx < len(country_list) else None
+                flag_emoji = get_flag(detected_country) if detected_country else "🌍"
+                service = user_service.get(chat_id, "Others")
+                if detected_country: update_traffic(service, detected_country, flag_emoji)
+                received_otps[chat_id] = otp
+                text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{flag_emoji}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                kb = otp_result_markup(otp)
+                if not first_otp_found and search_msg_id:
+                    try: bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb); first_otp_found = True
+                    except Exception:
+                        try: bot.send_message(chat_id, text, reply_markup=kb); first_otp_found = True
+                        except Exception: pass
+                else:
+                    try: bot.send_message(chat_id, text, reply_markup=kb)
+                    except Exception: pass
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+
+
+# ===================== STEX NUMBER PROCESSING =====================
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
     if rid is None:
@@ -2002,9 +2211,13 @@ def handle_query(call):
     elif call.data == "change_num":
         rid          = user_ranges.get(cid)
         service_name = user_service.get(cid, "Unknown")
+        panel        = user_panel.get(cid, "stex")
         if not rid: return
         fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
-        process_number(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
+        if panel == "nexus":
+            process_number_nexus(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
+        else:
+            process_number(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
 
     elif call.data == "otp_search":
         if otp_running.get(cid):
@@ -2194,81 +2407,3 @@ def handle_query(call):
 
     elif call.data.startswith("approve_"):
         if not is_admin(uid):
-            bot.answer_callback_query(call.id, "❌ Admin only!"); return
-        target_uid = call.data.split("_")[1]
-        w          = withdraw_data.get(int(target_uid), {})
-        amount     = w.get("amount", 0)
-        method     = w.get("method", "")
-        number     = w.get("number", "")
-        update_firebase_balance(target_uid, -amount)
-        withdraw_status[target_uid] = {
-            "status": "approved", "amount": amount,
-            "method": method, "number": number
-        }
-        # ইউজারের status message edit করো
-        info   = withdraw_status.get(target_uid, {})
-        msg_id = info.get("msg_id")
-        approved_text = (
-            f"✅ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
-            "🎉 𝐆𝐨𝐨𝐝! 𝐍𝐢𝐜𝐞 𝐰𝐨𝐫𝐤. 𝐊𝐞𝐞𝐩 𝐢𝐭 𝐮𝐩! 💖\n\n"
-            "✅ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞"
-        )
-        try:
-            if msg_id:
-                bot.edit_message_text(approved_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, approved_text)
-        except Exception:
-            try:
-                bot.send_message(target_uid, approved_text)
-            except Exception:
-                pass
-        bot.edit_message_text("✅ Approved", cid, call.message.message_id)
-
-    elif call.data.startswith("reject_"):
-        if not is_admin(uid):
-            bot.answer_callback_query(call.id, "❌ Admin only!"); return
-        target_uid = call.data.split("_")[1]
-        w          = withdraw_data.get(int(target_uid), {})
-        amount     = w.get("amount", 0)
-        method     = w.get("method", "")
-        number     = w.get("number", "")
-        withdraw_status[target_uid] = {
-            "status": "rejected", "amount": amount,
-            "method": method, "number": number
-        }
-        info   = withdraw_status.get(target_uid, {})
-        msg_id = info.get("msg_id")
-        rejected_text = (
-            f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
-        )
-        try:
-            if msg_id:
-                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, rejected_text)
-        except Exception:
-            try:
-                bot.send_message(target_uid, rejected_text)
-            except Exception:
-                pass
-        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
-
-# ===================== BOT RUN =====================
-def run_bot():
-    keep_alive()
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
-        except Exception:
-            logging.error(traceback.format_exc())
-            time.sleep(2)
-
-if __name__ == "__main__":
-    run_bot()
