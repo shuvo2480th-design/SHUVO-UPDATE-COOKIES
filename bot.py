@@ -1663,19 +1663,21 @@ def handle_admin_state(message, uid, txt):
     elif step == "add_country_rid":
         service_name = state.get("service")
         country_name = state.get("country")
+        panel        = state.get("panel", "stex")
         rid          = txt
-        countries    = service_countries[service_name]
+        countries    = service_countries[panel][service_name]
         found = False
         for c in countries:
             if c["name"].lower() == country_name.lower():
                 c["rid"] = rid; found = True; break
         if not found:
             countries.append({"name": country_name, "rid": rid})
-        save_countries_to_firebase(service_name)
+        save_countries_to_firebase(panel, service_name)
         admin_state.pop(uid, None)
+        panel_name = "STEX" if panel == "stex" else "NEXUS"
         bot.send_message(
             cid,
-            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
+            f"✅ সফলভাবে এড হয়েছে!\n📡 Panel   : {panel_name}\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
             reply_markup=admin_panel_markup()
         )
 
@@ -2264,28 +2266,64 @@ def handle_query(call):
         service_name = call.data[3:]
         if service_name not in FIXED_SERVICES:
             bot.answer_callback_query(call.id, "❌ সার্ভিস পাওয়া যায়নি।"); return
-        icon = SERVICE_ICONS.get(service_name, "📱")
+        # panel select দেখাও
         try:
-            bot.edit_message_text(f"{icon} {service_name.upper()} — দেশ সিলেক্ট করুন:", cid, call.message.message_id, reply_markup=country_menu_markup(service_name))
+            bot.edit_message_text(
+                f"📡 {service_name.upper()} — কোন প্যানেল থেকে নাম্বার নেবেন?",
+                cid, call.message.message_id,
+                reply_markup=build_inline_keyboard([
+                    [make_button("📡 STEX",  callback_data=f"panel_stex_{service_name}",  style="primary"),
+                     make_button("🔗 NEXUS", callback_data=f"panel_nexus_{service_name}", style="success")],
+                    [make_button("🔙 Back",  callback_data="back_to_services", style="danger")],
+                ])
+            )
         except Exception:
-            bot.send_message(cid, f"{icon} {service_name.upper()} — দেশ সিলেক্ট করুন:", reply_markup=country_menu_markup(service_name))
+            bot.send_message(cid, f"📡 {service_name.upper()} — কোন প্যানেল থেকে নাম্বার নেবেন?",
+                reply_markup=build_inline_keyboard([
+                    [make_button("📡 STEX",  callback_data=f"panel_stex_{service_name}",  style="primary"),
+                     make_button("🔗 NEXUS", callback_data=f"panel_nexus_{service_name}", style="success")],
+                    [make_button("🔙 Back",  callback_data="back_to_services", style="danger")],
+                ]))
+
+    elif call.data.startswith("panel_stex_") or call.data.startswith("panel_nexus_"):
+        panel        = "stex"  if call.data.startswith("panel_stex_")  else "nexus"
+        service_name = call.data.replace(f"panel_{panel}_", "")
+        if service_name not in FIXED_SERVICES: return
+        icon = SERVICE_ICONS.get(service_name, "📱")
+        panel_name = "📡 STEX" if panel == "stex" else "🔗 NEXUS"
+        try:
+            bot.edit_message_text(
+                f"{panel_name} — {icon} {service_name.upper()} — দেশ সিলেক্ট করুন:",
+                cid, call.message.message_id,
+                reply_markup=country_menu_markup(service_name, panel)
+            )
+        except Exception:
+            bot.send_message(cid,
+                f"{panel_name} — {icon} {service_name.upper()} — দেশ সিলেক্ট করুন:",
+                reply_markup=country_menu_markup(service_name, panel))
 
     elif call.data.startswith("ct_"):
+        # ct_{panel}__{service_name}__{idx}
         inner = call.data[3:]
-        sep   = inner.rfind("__")
-        if sep == -1: return
-        service_name = inner[:sep]
-        idx          = int(inner[sep + 2:])
-        if service_name not in FIXED_SERVICES:
+        parts = inner.split("__")
+        if len(parts) < 3: return
+        panel        = parts[0]
+        service_name = parts[1]
+        idx          = int(parts[2])
+        if service_name not in FIXED_SERVICES or panel not in PANELS:
             bot.answer_callback_query(call.id, "❌ সার্ভিস পাওয়া যায়নি।"); return
-        countries = service_countries.get(service_name, [])
+        countries = service_countries.get(panel, {}).get(service_name, [])
         if idx >= len(countries):
             bot.answer_callback_query(call.id, "❌ দেশ পাওয়া যায়নি।"); return
         rid = countries[idx]["rid"]
         user_ranges[cid]  = rid
         user_service[cid] = service_name
+        user_panel[cid]   = panel
         fake_msg = type("obj", (object,), {"chat": call.message.chat, "text": rid})()
-        process_number(fake_msg, edit_msg=call.message, service_name=service_name, rid=rid)
+        if panel == "nexus":
+            process_number_nexus(fake_msg, service_name=service_name, rid=rid)
+        else:
+            process_number(fake_msg, service_name=service_name, rid=rid)
 
     elif call.data == "change_num":
         rid          = user_ranges.get(cid)
