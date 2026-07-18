@@ -550,11 +550,18 @@ def main_markup(uid=None):
     return markup
 
 def service_menu_markup():
-    """সার্ভিস মেনু — service সিলেক্ট, তারপর panel সিলেক্ট"""
+    """GET NUMBER চাপলে সরাসরি এড করা দেশগুলো দেখাবে — panel+service গ্রুপ করে"""
     rows = []
-    for name in FIXED_SERVICES:
-        buttons = [make_button(f"{name.upper()}", callback_data=f"sv_{name}", style="primary")]
-        rows.append(buttons)
+    for panel in PANELS:
+        panel_name = "📡 STEX" if panel == "stex" else "🔗 NEXUS"
+        for svc in FIXED_SERVICES:
+            countries = service_countries.get(panel, {}).get(svc, [])
+            for idx, c in enumerate(countries):
+                flag  = get_flag(c["name"])
+                label = f"{flag} {c['name']} [{svc}]"
+                rows.append([make_button(label, callback_data=f"ct_{panel}__{svc}__{idx}", style="success")])
+    if not rows:
+        rows.append([make_button("⚠️ কোনো দেশ এড হয়নি", callback_data="noop", style="danger")])
     return build_inline_keyboard(rows)
 
 def panel_service_markup(service_name):
@@ -1316,7 +1323,9 @@ def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=Non
                 timeout=15
             )
             data = r.json()
-            if data.get("ok"):
+            # nexus response: {"status":"success","number":"..","id":"..","country":".."}
+            # অথবা 201 status code
+            if r.status_code == 201 or data.get("status") == "success" or data.get("ok"):
                 full_num = str(data.get("number", "")).replace("+", "")
                 country  = data.get("country", "Unknown")
                 api_id   = data.get("id")
@@ -1327,7 +1336,8 @@ def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=Non
                 try: bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt+2}/{max_retries})", chat_id, status_id)
                 except Exception: pass
                 time.sleep(3)
-        except Exception:
+        except Exception as e:
+            logger.error(f"nexus get_num error: {e}")
             if attempt < max_retries - 1: time.sleep(3)
 
     if not nums:
@@ -1341,7 +1351,7 @@ def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=Non
             r    = requests.post(f"{NEXUS_BASE_URL}/numbers", headers=NEXUS_HEADERS,
                                  json={"range": rid, "sid": "wa", "no_plus": False, "national": False}, timeout=15)
             data = r.json()
-            if data.get("ok"):
+            if r.status_code == 201 or data.get("status") == "success" or data.get("ok"):
                 full_num2 = str(data.get("number", "")).replace("+", "")
                 country2  = data.get("country", "Unknown")
                 api_id2   = data.get("id")
@@ -1412,8 +1422,14 @@ def auto_check_otp_nexus(chat_id, phone_numbers, api_ids, search_msg_id=None):
                 try:
                     r    = requests.get(f"{NEXUS_BASE_URL}/numbers/{api_id}", headers=NEXUS_HEADERS, timeout=10)
                     resp = r.json()
-                    for otp_entry in (resp.get("otps") or []):
-                        all_items.append({"otp_id": otp_entry.get("id"), "number": id_to_number.get(api_id, ""), "message": _get_otp_text_field(otp_entry)})
+                    # nexus OTP response: {"status":"success","otps":[{"id":..,"text":..}]}
+                    otp_list = resp.get("otps") or resp.get("messages") or []
+                    for otp_entry in otp_list:
+                        all_items.append({
+                            "otp_id":  otp_entry.get("id") or otp_entry.get("sid"),
+                            "number":  id_to_number.get(api_id, ""),
+                            "message": _get_otp_text_field(otp_entry)
+                        })
                 except Exception: continue
 
             for item in all_items:
