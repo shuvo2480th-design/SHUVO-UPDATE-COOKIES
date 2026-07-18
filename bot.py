@@ -2407,3 +2407,92 @@ def handle_query(call):
 
     elif call.data.startswith("approve_"):
         if not is_admin(uid):
+            bot.answer_callback_query(call.id, "❌ Admin only!")
+            return
+        target_uid = call.data.split("_")[1]
+        w          = withdraw_data.get(int(target_uid), {})
+        amount     = w.get("amount", 0)
+        method     = w.get("method", "")
+        number     = w.get("number", "")
+        update_firebase_balance(target_uid, -amount)
+        withdraw_status[target_uid] = {
+            "status": "approved", "amount": amount,
+            "method": method, "number": number
+        }
+        # ইউজারের status message edit করো
+        info   = withdraw_status.get(target_uid, {})
+        msg_id = info.get("msg_id")
+        approved_text = (
+            f"✅ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐢𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "👨‍💼 𝐀𝐝𝐦𝐢𝐧 𝐌𝐞𝐬𝐬𝐚𝐠𝐞:\n"
+            "🎉 𝐆𝐨𝐨𝐝! 𝐍𝐢𝐜𝐞 𝐰𝐨𝐫𝐤. 𝐊𝐞𝐞𝐩 𝐢𝐭 𝐮𝐩! 💖\n\n"
+            "✅ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞"
+        )
+        try:
+            if msg_id:
+                bot.edit_message_text(approved_text, int(target_uid), msg_id)
+            else:
+                bot.send_message(target_uid, approved_text)
+        except Exception:
+            try:
+                bot.send_message(target_uid, approved_text)
+            except Exception:
+                pass
+        bot.edit_message_text("✅ Approved", cid, call.message.message_id)
+
+    elif call.data.startswith("reject_"):
+        if not is_admin(uid):
+            bot.answer_callback_query(call.id, "❌ Admin only!"); return
+        target_uid = call.data.split("_")[1]
+        w          = withdraw_data.get(int(target_uid), {})
+        amount     = w.get("amount", 0)
+        method     = w.get("method", "")
+        number     = w.get("number", "")
+        withdraw_status[target_uid] = {
+            "status": "rejected", "amount": amount,
+            "method": method, "number": number
+        }
+        info   = withdraw_status.get(target_uid, {})
+        msg_id = info.get("msg_id")
+        rejected_text = (
+            f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
+        )
+        try:
+            if msg_id:
+                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
+            else:
+                bot.send_message(target_uid, rejected_text)
+        except Exception:
+            try:
+                bot.send_message(target_uid, rejected_text)
+            except Exception:
+                pass
+        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
+
+# ===================== BOT RUN =====================
+def run_bot():
+    keep_alive()
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
+        except Exception:
+            logging.error(traceback.format_exc())
+            time.sleep(2)
+
+if __name__ == "__main__":
+    run_bot()𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
+            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
+            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
+        )
+        try:
+            if msg_id:
+                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
+            else:
+                bot.send_message(target_uid, rejected_text)
+        except Except
