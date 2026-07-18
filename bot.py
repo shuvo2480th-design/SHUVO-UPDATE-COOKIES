@@ -2564,17 +2564,4 @@ def run_bot():
             time.sleep(2)
 
 if __name__ == "__main__":
-    run_bot()𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
-        )
-        try:
-            if msg_id:
-                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, rejected_text)
-        except Exception:
-            try:
-                bot.send_message(target_uid, rejected_text)
-            except Exception:
+    run_bot()
