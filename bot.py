@@ -2444,7 +2444,8 @@ def handle_query(call):
 
     elif call.data.startswith("reject_"):
         if not is_admin(uid):
-            bot.answer_callback_query(call.id, "❌ Admin only!"); return
+            bot.answer_callback_query(call.id, "❌ Admin only!")
+            return
         target_uid = call.data.split("_")[1]
         w          = withdraw_data.get(int(target_uid), {})
         amount     = w.get("amount", 0)
@@ -2485,14 +2486,4 @@ def run_bot():
             time.sleep(2)
 
 if __name__ == "__main__":
-    run_bot()𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
-        )
-        try:
-            if msg_id:
-                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, rejected_text)
-        except Except
+    run_bot()
