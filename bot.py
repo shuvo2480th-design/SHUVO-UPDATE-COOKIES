@@ -2489,7 +2489,4 @@ def run_bot():
             time.sleep(2)
 
 if __name__ == "__main__":
-    run_bot()𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑�
+    run_bot()
