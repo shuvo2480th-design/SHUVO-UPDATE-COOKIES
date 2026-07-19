@@ -1296,7 +1296,7 @@ def _get_otp_text_field(otp_entry):
     return (otp_entry.get("text") or otp_entry.get("message") or otp_entry.get("body") or "")
 
 def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=None):
-    """Nexus প্যানেল থেকে নাম্বার নেওয়া"""
+    """Nexus প্যানেল থেকে নাম্বার নেওয়া — nexus_.txt থেকে হুবহু"""
     chat_id = message.chat.id
     if not rid:
         rid = user_ranges.get(chat_id, "8801")
@@ -1316,51 +1316,95 @@ def process_number_nexus(message, edit_msg=None, service_name="Unknown", rid=Non
 
     for attempt in range(max_retries):
         try:
-            r    = requests.post(
+            r = requests.post(
                 f"{NEXUS_BASE_URL}/numbers",
-                headers=NEXUS_HEADERS,
+                headers={"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"},
                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
                 timeout=15
             )
             data = r.json()
-            # nexus response: {"status":"success","number":"..","id":"..","country":".."}
-            # অথবা 201 status code
-            if r.status_code == 201 or data.get("status") == "success" or data.get("ok"):
+            # nexus 201 status = success
+            if r.status_code == 201 or data.get("ok"):
                 full_num = str(data.get("number", "")).replace("+", "")
                 country  = data.get("country", "Unknown")
                 api_id   = data.get("id")
                 if full_num not in nums:
-                    nums.append(full_num); countries.append(country); ids.append(api_id)
+                    nums.append(full_num)
+                    countries.append(country)
+                    ids.append(api_id)
                 break
             if attempt < max_retries - 1:
-                try: bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt+2}/{max_retries})", chat_id, status_id)
-                except Exception: pass
+                try:
+                    bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt+2}/{max_retries})", chat_id, status_id)
+                except Exception:
+                    pass
                 time.sleep(3)
         except Exception as e:
-            logger.error(f"nexus get_num error: {e}")
-            if attempt < max_retries - 1: time.sleep(3)
+            logger.error(f"nexus num error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(3)
 
     if not nums:
-        try: bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না।", chat_id, status_id, reply_markup=try_again_markup())
-        except Exception: pass
+        try:
+            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না।", chat_id, status_id, reply_markup=try_again_markup())
+        except Exception:
+            pass
         return
 
     # ২য় নাম্বার
     for attempt in range(3):
         try:
-            r    = requests.post(f"{NEXUS_BASE_URL}/numbers", headers=NEXUS_HEADERS,
-                                 json={"range": rid, "sid": "wa", "no_plus": False, "national": False}, timeout=15)
+            r = requests.post(
+                f"{NEXUS_BASE_URL}/numbers",
+                headers={"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"},
+                json={"range": rid, "sid": "wa", "no_plus": False, "national": False},
+                timeout=15
+            )
             data = r.json()
-            if r.status_code == 201 or data.get("status") == "success" or data.get("ok"):
+            if r.status_code == 201 or data.get("ok"):
                 full_num2 = str(data.get("number", "")).replace("+", "")
                 country2  = data.get("country", "Unknown")
                 api_id2   = data.get("id")
                 if full_num2 not in nums:
-                    nums.append(full_num2); countries.append(country2); ids.append(api_id2)
+                    nums.append(full_num2)
+                    countries.append(country2)
+                    ids.append(api_id2)
                 break
             time.sleep(2)
         except Exception:
             time.sleep(2)
+
+    otp_running[chat_id]     = False
+    strd_running[chat_id]    = False
+    time.sleep(0.5)
+    user_numbers[chat_id]    = nums
+    user_countries[chat_id]  = countries
+    user_number_ids[chat_id] = ids
+    user_ranges[chat_id]     = rid
+    user_service[chat_id]    = service_name
+    user_panel[chat_id]      = "nexus"
+    received_otps[chat_id]   = None
+    used_otps[chat_id]       = []
+
+    back_cb      = f"back_to_country_nexus_{service_name}"
+    country_show = countries[0] if countries else "Unknown"
+    flag         = get_flag(country_show)
+
+    msg_text = "⏳ WAITING FOR OTP..."
+    kb = build_inline_keyboard(
+        [[make_button(f"{get_flag(countries[i] if i < len(countries) else '')}  +{num}", style="primary", copy_text_val=f"+{num}")] for i, num in enumerate(nums)]
+        + [[make_button(f"{flag} {country_show}", callback_data="noop", style="success"),
+            make_button(f"📲 {service_name.upper()}", callback_data="noop", style="success")]]
+        + [[make_button("🔄 Change Number", callback_data="change_num", style="primary"),
+            make_button("🔐 OTP GROUP", url=GROUP_URL, style="primary")],
+           [make_button("🔙 BACK", callback_data=back_cb, style="danger")]]
+    )
+    try:
+        bot.edit_message_text(msg_text, chat_id, status_id, reply_markup=kb)
+    except Exception:
+        bot.send_message(chat_id, msg_text, reply_markup=kb)
+
+    threading.Thread(target=auto_check_otp_nexus, args=(chat_id, list(nums), list(ids), status_id), daemon=True).start()
 
     otp_running[chat_id]     = False
     strd_running[chat_id]    = False
