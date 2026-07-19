@@ -1026,11 +1026,8 @@ def get_country_name_from_code(code):
 @bot.message_handler(commands=['strd'])
 def strd_command(message):
     uid = str(message.from_user.id)
-    chat_id = message.chat.id
-    
     if not is_admin(uid):
         return
-    
     welcome_text = (
         "👋𓆩𓆩WELCOME TO OTP SERViCE𓆪𓆪\n"
         " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
@@ -1038,7 +1035,16 @@ def strd_command(message):
         " ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅ ̅\n\n"
         "♾️ POWERED BY Shuvoᯓᡣ𐭩"
     )
-    bot.send_message(chat_id, welcome_text, reply_markup=main_markup(uid))
+    bot.send_message(message.chat.id, welcome_text, reply_markup=main_markup(uid))
+    return
+    chat_id  = message.chat.id
+    nums     = user_numbers.get(chat_id, [])
+    if not nums:
+        bot.reply_to(message, "❌ আগে একটি নাম্বার নিন!"); return
+    if strd_running.get(chat_id):
+        bot.reply_to(message, "⏳ ইতিমধ্যে OTP খোঁজা চলছে!"); return
+    search_msg = bot.send_message(chat_id, "🔍 OTP SEARCHING (∞)...\n⏳ Number change না হওয়া পর্যন্ত চালু...")
+    threading.Thread(target=infinite_otp_search, args=(chat_id, list(nums), search_msg.message_id), daemon=True).start()
 
 def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
@@ -1663,7 +1669,18 @@ def handle_query(call):
     elif call.data == "adm_add_country":
         if not is_admin(uid): return
         try:
-            bot.edit_message_text("🌍 কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("STEX", callback_data="adm_panel_stex"), types.InlineKeyboardButton("NEXUS", callback_data="adm_panel_nexus"))
+            bot.edit_message_text("📱 কোন পেনেলে রেঞ্জ এড করবেন?", cid, call.message.message_id, reply_markup=kb)
+        except Exception:
+            pass
+    
+    elif call.data in ["adm_panel_stex", "adm_panel_nexus"]:
+        if not is_admin(uid): return
+        panel = "stex" if "stex" in call.data else "nexus"
+        admin_state[uid_str] = {"panel": panel}
+        try:
+            bot.edit_message_text(f"🌍 {panel.upper()} — কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=admin_service_select_markup("addcountry"))
         except Exception:
             pass
 
