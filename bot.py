@@ -11,7 +11,7 @@ import traceback
 logging.basicConfig(level=logging.INFO)
 
 # ===================== NEXUS CONFIG =====================
-NEXUS_API_KEY  = "nx_vSNXnzmDoioy9vFBpaFoLEXeBgRMxVMGeD09jQ"
+NEXUS_API_KEY  = "nx_y8O9Wjypv-Kugp8JDWgU3ZNd9qTaCaHfKoTZOg"
 NEXUS_BASE_URL = "https://v2.nexus-x.site/api/v1"
 NEXUS_HEADERS  = {"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"}
 
