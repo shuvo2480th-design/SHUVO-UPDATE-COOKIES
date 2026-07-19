@@ -1331,6 +1331,78 @@ def process_number_nexus(message, edit_msg=None, service_name="wa", rid=None):
     bot.edit_message_text(num_text, chat_id, status_id, reply_markup=get_otp_or_new_markup())
 
 
+# ===================== SERVICE MAPPING =====================
+def get_nexus_sid(service_name):
+    """Service name কে NEXUS SID তে convert করছি"""
+    mapping = {
+        "facebook": "fb",
+        "whatsapp": "wa",
+        "telegram": "tg",
+        "instagram": "ig"
+    }
+    return mapping.get(service_name.lower(), service_name.lower())
+
+# ===================== NEXUS PROCESS =====================
+def process_number_nexus(chat_id, rid, service_name="wa"):
+    nums = []
+    countries = []
+    api_ids = []
+    
+    sid = get_nexus_sid(service_name)
+    
+    for attempt in range(5):
+        try:
+            r = requests.post(
+                f"{NEXUS_BASE_URL}/numbers",
+                headers=NEXUS_HEADERS,
+                json={"range": rid, "sid": sid, "no_plus": False, "national": False},
+                timeout=15
+            )
+            data = r.json()
+            if data.get("ok"):
+                num = str(data.get("number", "")).replace("+", "")
+                country = data.get("country", "Unknown")
+                api_id = data.get("id")
+                
+                if num not in nums:
+                    nums.append(num)
+                    countries.append(country)
+                    api_ids.append(api_id)
+                break
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+    
+    return nums, countries, api_ids
+
+# ===================== STEX PROCESS =====================
+def process_number_stex(chat_id, rid):
+    nums = []
+    countries = []
+    
+    for attempt in range(5):
+        try:
+            r = session.post(
+                f"{STEX_BASE_URL}/getnum",
+                headers=STEX_HEADERS,
+                json={"rid": rid},
+                timeout=15
+            )
+            data = r.json()
+            if data.get("meta", {}).get("code") == 200:
+                full_num = str(data["data"]["full_number"]).replace("+", "")
+                country = data["data"].get("country", "Unknown")
+                
+                if full_num not in nums:
+                    nums.append(full_num)
+                    countries.append(country)
+                break
+            time.sleep(2)
+        except Exception:
+            time.sleep(2)
+    
+    return nums, countries
+
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
     if rid is None:
@@ -1344,9 +1416,44 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
                 panel = c.get("panel", "stex")
                 break
     
-    # NEXUS selected, use NEXUS function
+    # Panel অনুযায়ী API call করছি
     if panel == "nexus":
-        return process_number_nexus(message, edit_msg, service_name, rid)
+        nums, countries, api_ids = process_number_nexus(chat_id, rid, service_name)
+    else:  # stex
+        nums, countries = process_number_stex(chat_id, rid)
+        api_ids = []
+    
+    # নাম্বার না পেলে
+    if not nums:
+        loading_text = "⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।"
+        if edit_msg:
+            try:
+                bot.edit_message_text(loading_text, chat_id, edit_msg.message_id, reply_markup=try_again_markup())
+            except Exception:
+                pass
+        else:
+            bot.send_message(chat_id, loading_text, reply_markup=try_again_markup())
+        return
+    
+    # নাম্বার পেলে store করছি
+    user_numbers[chat_id] = nums
+    user_countries[chat_id] = countries
+    user_ranges_full[chat_id] = api_ids if api_ids else None
+    
+    # নাম্বার display করছি
+    num_text = "✅ আপনার নাম্বার:\n\n"
+    for i, num in enumerate(nums):
+        num_text += f"{i+1}. {num} ({countries[i]})\n"
+    
+    if edit_msg:
+        try:
+            bot.edit_message_text(num_text, chat_id, edit_msg.message_id, reply_markup=get_otp_or_new_markup())
+        except Exception:
+            bot.send_message(chat_id, num_text, reply_markup=get_otp_or_new_markup())
+    else:
+        bot.send_message(chat_id, num_text, reply_markup=get_otp_or_new_markup())
+    
+    return
 
     loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
@@ -2376,10 +2483,4 @@ def run_bot():
     keep_alive()
     while True:
         try:
-            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
-        except Exception:
-            logging.error(traceback.format_exc())
-            time.sleep(2)
-
-if __name__ == "__main__":
-    run_bot()
+            bot.polling(none_stop=True, interval=0
