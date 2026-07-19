@@ -21,7 +21,7 @@ STEX_HEADERS  = {"mauthapi": "MUBTR1MKUBO"}
 
 # ===================== BOT CONFIG =====================
 BOT_TOKEN    = "8738544813:AAE30UcDfQDZsPYr43GCKXGoyk_h6OpqZvU"
-ADMIN_ID     = "6136815573"
+ADMIN_ID     = "6470499890"
 FIREBASE_URL = "https://shuvo-866aa-default-rtdb.firebaseio.com"
 GROUP_URL    = "https://t.me/otpgurup1"
 REQUIRED_CHANNELS = ["@otpgurup1", "@onlineskillshub1"]
@@ -35,7 +35,7 @@ users = {}
 user_numbers = {}
 user_countries = {}
 user_ranges = {}
-user_panel = {}  # chat_id → "nexus" or "stex"
+user_panel = {}
 user_service = {}
 admin_state = {}
 today_date = {}
@@ -93,12 +93,11 @@ def update_firebase_balance(uid, amount):
     
     try:
         _fb_put(f"/users/{uid}/balance", new_bal)
-        print(f"✅ Balance updated: {uid} → {new_bal}")
+        print(f"✅ Balance updated: {uid} = {new_bal}")
     except Exception as e:
         print(f"❌ Balance error: {e}")
         return current
     
-    # Today stats
     today_str = str(date.today())
     if today_date.get(uid) != today_str:
         today_date[uid] = today_str
@@ -108,8 +107,8 @@ def update_firebase_balance(uid, amount):
     today_otp_count[uid] = today_otp_count.get(uid, 0) + 1
     return new_bal
 
-# ===================== ADMIN RANGES - PANEL WISE =====================
-admin_ranges = {}  # {panel: {service: [countries]}}
+# ===================== ADMIN RANGES =====================
+admin_ranges = {}
 
 def load_admin_ranges():
     global admin_ranges
@@ -139,27 +138,26 @@ def build_inline_keyboard(rows):
         markup.row(*row)
     return markup
 
-def make_button(text, callback_data=None, url=None, style="primary"):
+def make_button(text, callback_data=None, url=None):
     if url:
         return telebot.types.InlineKeyboardButton(text, url=url)
     else:
-        btn = telebot.types.InlineKeyboardButton(text, callback_data=callback_data)
-        return btn
+        return telebot.types.InlineKeyboardButton(text, callback_data=callback_data)
 
 # ===================== MARKUPS =====================
 def admin_panel_markup():
     return build_inline_keyboard([
-        [make_button("🌍 Add Country", callback_data="adm_add_country", style="success")],
-        [make_button("🗑️ Del Country", callback_data="adm_del_country", style="danger")],
-        [make_button("💰 Add Money", callback_data="adm_add_money", style="success")],
-        [make_button("💸 Delete Balance", callback_data="adm_del_balance", style="danger")],
+        [make_button("Add Country", callback_data="adm_add_country")],
+        [make_button("Del Country", callback_data="adm_del_country")],
+        [make_button("Add Money", callback_data="adm_add_money")],
+        [make_button("Delete Balance", callback_data="adm_del_balance")],
     ])
 
 def panel_select_markup():
     return build_inline_keyboard([
         [make_button("NEXUS", callback_data="panel_select_nexus")],
         [make_button("STEX", callback_data="panel_select_stex")],
-        [make_button("❌ Cancel", callback_data="adm_cancel", style="danger")],
+        [make_button("Cancel", callback_data="adm_cancel")],
     ])
 
 def service_select_markup(panel):
@@ -168,7 +166,7 @@ def service_select_markup(panel):
         [make_button("WhatsApp", callback_data=f"svc_select_{panel}_whatsapp")],
         [make_button("Telegram", callback_data=f"svc_select_{panel}_telegram")],
         [make_button("Instagram", callback_data=f"svc_select_{panel}_instagram")],
-        [make_button("🔙 Back", callback_data="adm_add_country", style="danger")],
+        [make_button("Back", callback_data="adm_add_country")],
     ])
 
 def country_list_markup(panel, service):
@@ -177,8 +175,8 @@ def country_list_markup(panel, service):
     
     if not countries:
         return build_inline_keyboard([
-            [make_button("❌ কোনো দেশ নেই", callback_data="dummy")],
-            [make_button("🔙 Back", callback_data=f"svc_select_{panel}_{service}", style="danger")],
+            [make_button("No countries", callback_data="dummy")],
+            [make_button("Back", callback_data=f"svc_select_{panel}_{service}")],
         ])
     
     rows = []
@@ -187,12 +185,11 @@ def country_list_markup(panel, service):
         rid = country.get("rid", "?")
         rows.append([make_button(f"{name} ({rid})", callback_data=f"country_select_{panel}_{service}_{i}")])
     
-    rows.append([make_button("🔙 Back", callback_data=f"svc_select_{panel}_{service}", style="danger")])
+    rows.append([make_button("Back", callback_data=f"svc_select_{panel}_{service}")])
     return build_inline_keyboard(rows)
 
-# ===================== PROCESS NUMBER DUAL PANEL =====================
+# ===================== PROCESS NUMBER =====================
 def process_number_nexus(chat_id, rid, service_name="wa"):
-    """NEXUS থেকে ২টা নাম্বার"""
     nums = []
     countries = []
     api_ids = []
@@ -223,7 +220,6 @@ def process_number_nexus(chat_id, rid, service_name="wa"):
     return nums, countries, api_ids
 
 def process_number_stex(chat_id, rid):
-    """STEX থেকে ২টা নাম্বার"""
     nums = []
     countries = []
     
@@ -259,18 +255,30 @@ def start(message):
     register_user(uid, message.from_user.first_name or "User")
     
     if is_admin(uid):
-        welcome = "👋 স্বাগতম ADMIN!\n\n🔧 ADMIN PANEL এ যান"
-        bot.send_message(chat_id, welcome, reply_markup=build_inline_keyboard([
-            [make_button("⚙️ ADMIN PANEL", callback_data="admin_panel")],
+        bot.send_message(chat_id, "Welcome ADMIN!", reply_markup=build_inline_keyboard([
+            [make_button("ADMIN PANEL", callback_data="admin_panel")],
             [make_button("GET NUMBER", callback_data="get_number")],
-            [make_button("💰 BALANCE", callback_data="check_balance")],
         ]))
     else:
-        welcome = "👋 স্বাগতম OTP BOT এ!\n\nনাম্বার এবং OTP পেতে GET NUMBER চাপুন"
-        bot.send_message(chat_id, welcome, reply_markup=build_inline_keyboard([
+        bot.send_message(chat_id, "Welcome to OTP Bot!", reply_markup=build_inline_keyboard([
             [make_button("GET NUMBER", callback_data="get_number")],
-            [make_button("💰 BALANCE", callback_data="check_balance")],
+            [make_button("BALANCE", callback_data="check_balance")],
         ]))
+
+@bot.message_handler(commands=['strd'])
+def strd_command(message):
+    uid = str(message.from_user.id)
+    chat_id = message.chat.id
+    
+    if not is_admin(uid):
+        bot.send_message(chat_id, "Admin only!")
+        return
+    
+    welcome = "WELCOME TO DUAL PANEL OTP BOT!\n\nSTEX + NEXUS system active"
+    bot.send_message(chat_id, welcome, reply_markup=build_inline_keyboard([
+        [make_button("ADMIN PANEL", callback_data="admin_panel")],
+        [make_button("GET NUMBER", callback_data="get_number")],
+    ]))
 
 # ===================== CALLBACK HANDLERS =====================
 @bot.callback_query_handler(func=lambda call: True)
@@ -279,28 +287,24 @@ def callback_handler(call):
     cid = call.message.chat.id
     
     try:
-        # ADMIN PANEL
         if call.data == "admin_panel":
             if not is_admin(uid):
                 return
-            bot.edit_message_text("⚙️ ADMIN PANEL", cid, call.message.message_id, reply_markup=admin_panel_markup())
+            bot.edit_message_text("ADMIN PANEL", cid, call.message.message_id, reply_markup=admin_panel_markup())
         
-        # ADD COUNTRY - প্রথমে Panel select
         elif call.data == "adm_add_country":
             if not is_admin(uid):
                 return
             load_admin_ranges()
-            bot.edit_message_text("📱 কোন Panel এ দেশ এড করবেন?", cid, call.message.message_id, reply_markup=panel_select_markup())
+            bot.edit_message_text("Select Panel:", cid, call.message.message_id, reply_markup=panel_select_markup())
         
-        # PANEL SELECT
         elif call.data.startswith("panel_select_"):
             if not is_admin(uid):
                 return
             panel = call.data.replace("panel_select_", "")
             admin_state[uid] = {"panel": panel}
-            bot.edit_message_text(f"📱 {panel.upper()} — কোন সার্ভিসে দেশ এড করবেন?", cid, call.message.message_id, reply_markup=service_select_markup(panel))
+            bot.edit_message_text(f"Select Service for {panel.upper()}:", cid, call.message.message_id, reply_markup=service_select_markup(panel))
         
-        # SERVICE SELECT
         elif call.data.startswith("svc_select_"):
             if not is_admin(uid):
                 return
@@ -308,36 +312,24 @@ def callback_handler(call):
             panel = parts[0]
             service = parts[1]
             admin_state[uid] = {"panel": panel, "service": service}
-            bot.edit_message_text(f"🌍 {panel.upper()} - {service.upper()} সার্ভিস", cid, call.message.message_id, reply_markup=country_list_markup(panel, service))
+            bot.edit_message_text(f"{panel.upper()} - {service.upper()}", cid, call.message.message_id, reply_markup=country_list_markup(panel, service))
         
-        # CANCEL
         elif call.data == "adm_cancel":
-            if not is_admin(uid):
-                return
             admin_state.pop(uid, None)
-            bot.edit_message_text("❌ বাতিল করা হয়েছে।", cid, call.message.message_id)
-            bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+            bot.send_message(cid, "ADMIN PANEL", reply_markup=admin_panel_markup())
         
-        # GET NUMBER
         elif call.data == "get_number":
             load_admin_ranges()
-            # সব panels এর সব services এর countries দেখাব
-            msg = "📱 সার্ভিস নির্বাচন করুন:\n\n"
-            msg += "(Admin যা রেখেছেন সেটা দেখাচ্ছে)"
-            
             rows = []
             services = ["facebook", "whatsapp", "telegram", "instagram"]
             for svc in services:
                 rows.append([make_button(svc.upper(), callback_data=f"get_svc_{svc}")])
-            
-            bot.edit_message_text(msg, cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
+            bot.edit_message_text("Select Service:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
         
-        # GET SERVICE
         elif call.data.startswith("get_svc_"):
             service = call.data.replace("get_svc_", "")
             load_admin_ranges()
             
-            # সব panels থেকে এই service র countries collect করব
             rows = []
             for panel in ["nexus", "stex"]:
                 countries = admin_ranges.get(panel, {}).get(service, [])
@@ -347,31 +339,29 @@ def callback_handler(call):
                     rows.append([make_button(f"{name} ({rid}) - {panel.upper()}", callback_data=f"getnum_{panel}_{service}_{rid}")])
             
             if not rows:
-                bot.edit_message_text("❌ এই সার্ভিসে কোনো দেশ পাওয়া যায়নি", cid, call.message.message_id)
+                bot.edit_message_text("No countries found", cid, call.message.message_id)
                 return
             
-            rows.append([make_button("🔙 Back", callback_data="get_number", style="danger")])
-            bot.edit_message_text(f"🌍 {service.upper()} - দেশ নির্বাচন করুন:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
+            rows.append([make_button("Back", callback_data="get_number")])
+            bot.edit_message_text(f"Select Country for {service.upper()}:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
         
-        # GET NUMBER FROM PANEL
         elif call.data.startswith("getnum_"):
             parts = call.data.replace("getnum_", "").split("_", 2)
             panel = parts[0]
             service = parts[1]
             rid = parts[2]
             
-            # Loading message
-            status_msg = bot.edit_message_text("⏳ নাম্বার আসছে...", cid, call.message.message_id)
+            status_msg = bot.edit_message_text("Getting number...", cid, call.message.message_id)
             
             if panel == "nexus":
                 nums, countries, api_ids = process_number_nexus(cid, rid, service)
-                user_ranges[cid] = api_ids  # OTP search এর জন্য
-            else:  # stex
+                user_ranges[cid] = api_ids
+            else:
                 nums, countries = process_number_stex(cid, rid)
-                user_ranges[cid] = None  # STEX এর জন্য
+                user_ranges[cid] = None
             
             if not nums:
-                bot.edit_message_text("❌ নাম্বার পাওয়া যায়নি", cid, status_msg.message_id)
+                bot.edit_message_text("Number not available", cid, status_msg.message_id)
                 return
             
             user_numbers[cid] = nums
@@ -379,34 +369,30 @@ def callback_handler(call):
             user_panel[cid] = panel
             user_service[cid] = service
             
-            # নাম্বার display
-            num_text = "✅ আপনার নাম্বার:\n\n"
+            num_text = "Your Numbers:\n\n"
             for i, num in enumerate(nums):
                 num_text += f"{i+1}. {num} ({countries[i]})\n"
-            
-            num_text += f"\n🔴 Panel: {panel.upper()}"
+            num_text += f"\nPanel: {panel.upper()}"
             
             bot.edit_message_text(num_text, cid, status_msg.message_id, reply_markup=build_inline_keyboard([
-                [make_button("🔍 OTP খুঁজুন", callback_data="search_otp")],
-                [make_button("🔙 নতুন নাম্বার", callback_data="get_number")],
+                [make_button("Search OTP", callback_data="search_otp")],
+                [make_button("New Number", callback_data="get_number")],
             ]))
         
-        # SEARCH OTP
         elif call.data == "search_otp":
             panel = user_panel.get(cid)
             nums = user_numbers.get(cid, [])
             
             if not nums:
-                bot.edit_message_text("❌ কোনো নাম্বার নেই", cid, call.message.message_id)
+                bot.edit_message_text("No number", cid, call.message.message_id)
                 return
             
-            otp_msg = bot.edit_message_text("🔍 OTP খোঁজা হচ্ছে...", cid, call.message.message_id)
+            otp_msg = bot.edit_message_text("Searching OTP...", cid, call.message.message_id)
             
-            # OTP search করব (panel অনুযায়ী)
             if panel == "nexus":
                 api_ids = user_ranges.get(cid, [])
                 if not api_ids:
-                    bot.edit_message_text("❌ OTP খুঁজতে পারছি না", cid, otp_msg.message_id)
+                    bot.edit_message_text("Error searching", cid, otp_msg.message_id)
                     return
                 
                 for api_id in api_ids:
@@ -419,18 +405,15 @@ def callback_handler(call):
                         data = r.json()
                         if data.get("ok") and data.get("otps"):
                             otp = data["otps"][0].get("body", "?")
-                            
-                            # Balance add করছি
                             uid_str = str(call.from_user.id)
                             new_bal = update_firebase_balance(uid_str, 0.40)
-                            
-                            otp_text = f"✅ OTP পাওয়া গেছে!\n\n🔐 OTP: {otp}\n💰 Balance: {new_bal}"
+                            otp_text = f"OTP Found!\n\nOTP: {otp}\nBalance: {new_bal} TK"
                             bot.edit_message_text(otp_text, cid, otp_msg.message_id)
                             return
                     except Exception:
                         pass
             
-            else:  # STEX
+            else:
                 try:
                     r = session.get(f"{STEX_BASE_URL}/success-otp", timeout=15)
                     data = r.json()
@@ -438,53 +421,42 @@ def callback_handler(call):
                         otps = data.get("data", [])
                         if otps:
                             otp = otps[0].get("otp", "?")
-                            
-                            # Balance add করছি
                             uid_str = str(call.from_user.id)
                             new_bal = update_firebase_balance(uid_str, 0.40)
-                            
-                            otp_text = f"✅ OTP পাওয়া গেছে!\n\n🔐 OTP: {otp}\n💰 Balance: {new_bal}"
+                            otp_text = f"OTP Found!\n\nOTP: {otp}\nBalance: {new_bal} TK"
                             bot.edit_message_text(otp_text, cid, otp_msg.message_id)
                             return
                 except Exception:
                     pass
             
-            bot.edit_message_text("❌ এখনো OTP আসেনি, আরেকবার চেষ্টা করুন", cid, otp_msg.message_id)
+            bot.edit_message_text("OTP not found yet", cid, otp_msg.message_id)
         
-        # BALANCE CHECK
         elif call.data == "check_balance":
             uid_str = str(call.from_user.id)
             balance = get_firebase_balance(uid_str)
-            bot.edit_message_text(f"💰 আপনার Balance: {balance} TK", cid, call.message.message_id, reply_markup=build_inline_keyboard([
-                [make_button("🔙 Back", callback_data="dummy" if is_admin(uid) else "dummy")],
-            ]))
+            bot.edit_message_text(f"Balance: {balance} TK", cid, call.message.message_id)
         
-        # DEL COUNTRY
         elif call.data == "adm_del_country":
             if not is_admin(uid):
                 return
             load_admin_ranges()
             
             rows = []
-            all_countries = []
-            
             for panel in ["nexus", "stex"]:
                 for service in ["facebook", "whatsapp", "telegram", "instagram"]:
                     countries = admin_ranges.get(panel, {}).get(service, [])
                     for i, country in enumerate(countries):
                         name = country.get("name", "?")
                         rid = country.get("rid", "?")
-                        all_countries.append((panel, service, i, name, rid))
                         rows.append([make_button(f"{name} ({rid}) - {panel}/{service}", callback_data=f"delcountry_{panel}_{service}_{i}")])
             
             if not rows:
-                bot.edit_message_text("❌ কোনো দেশ নেই", cid, call.message.message_id)
+                bot.edit_message_text("No countries", cid, call.message.message_id)
                 return
             
-            rows.append([make_button("🔙 Back", callback_data="admin_panel", style="danger")])
-            bot.edit_message_text("🗑️ ডিলিট করতে দেশ নির্বাচন করুন:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
+            rows.append([make_button("Back", callback_data="admin_panel")])
+            bot.edit_message_text("Delete Country:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
         
-        # DELETE COUNTRY
         elif call.data.startswith("delcountry_"):
             if not is_admin(uid):
                 return
@@ -499,19 +471,18 @@ def callback_handler(call):
                 deleted = countries[idx]["name"]
                 countries.pop(idx)
                 
-                # Firebase এ save করছি
                 if panel not in admin_ranges:
                     admin_ranges[panel] = {}
                 admin_ranges[panel][service] = countries
                 _fb_put("/admin_ranges", admin_ranges)
                 
-                bot.edit_message_text(f"✅ {deleted} ডিলিট হয়েছে!", cid, call.message.message_id)
-                bot.send_message(cid, "⚙️ ADMIN PANEL", reply_markup=admin_panel_markup())
+                bot.edit_message_text(f"Deleted: {deleted}", cid, call.message.message_id)
+                bot.send_message(cid, "ADMIN PANEL", reply_markup=admin_panel_markup())
     
     except Exception as e:
         print(f"Callback error: {e}")
 
-# ===================== MESSAGE HANDLER - ADD COUNTRY FLOW =====================
+# ===================== MESSAGE HANDLER =====================
 @bot.message_handler(func=lambda msg: str(msg.from_user.id) in admin_state)
 def handle_admin_input(message):
     uid = str(message.from_user.id)
@@ -522,16 +493,13 @@ def handle_admin_input(message):
     txt = message.text.strip()
     cid = message.chat.id
     
-    # Country Name input
     if "panel" in state and "service" in state and "country" not in state:
         admin_state[uid]["country"] = txt
-        msg = bot.send_message(cid, f"🔢 Range দিন (যেমন: 8801)")
+        bot.send_message(cid, "Enter Range (e.g. 8801):")
     
-    # Range input
     elif "country" in state and "range" not in state:
         admin_state[uid]["range"] = txt
         
-        # এখন save করছি
         panel = state["panel"]
         service = state["service"]
         country = state["country"]
@@ -544,7 +512,6 @@ def handle_admin_input(message):
         if service not in admin_ranges[panel]:
             admin_ranges[panel][service] = []
         
-        # Check duplicate
         for c in admin_ranges[panel][service]:
             if c.get("name", "").lower() == country.lower():
                 c["rid"] = rid
@@ -552,18 +519,13 @@ def handle_admin_input(message):
         else:
             admin_ranges[panel][service].append({"name": country, "rid": rid})
         
-        # Firebase save
         _fb_put("/admin_ranges", admin_ranges)
         
         admin_state.pop(uid, None)
-        bot.send_message(cid, f"✅ সফল!\n📱 {panel.upper()}\n🌍 {service.upper()}\n🏙️ {country}\n🔢 {rid}\n\n✅ Firebase এ Save হয়েছে!", reply_markup=admin_panel_markup())
+        bot.send_message(cid, f"Saved!\n{panel.upper()} - {service.upper()}\n{country} ({rid})", reply_markup=admin_panel_markup())
 
 # ===================== BOT RUN =====================
-def keep_alive():
-    pass
-
 def run_bot():
-    keep_alive()
     load_admin_ranges()
     while True:
         try:
