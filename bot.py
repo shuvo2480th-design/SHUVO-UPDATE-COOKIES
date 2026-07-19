@@ -173,17 +173,14 @@ def country_list_markup(panel, service):
     load_admin_ranges()
     countries = admin_ranges.get(panel, {}).get(service, [])
     
-    if not countries:
-        return build_inline_keyboard([
-            [make_button("No countries", callback_data="dummy")],
-            [make_button("Back", callback_data=f"svc_select_{panel}_{service}")],
-        ])
-    
     rows = []
-    for i, country in enumerate(countries):
-        name = country.get("name", "?")
-        rid = country.get("rid", "?")
-        rows.append([make_button(f"{name} ({rid})", callback_data=f"country_select_{panel}_{service}_{i}")])
+    rows.append([make_button("ADD NEW COUNTRY", callback_data=f"add_new_country_{panel}_{service}")])
+    
+    if countries:
+        for i, country in enumerate(countries):
+            name = country.get("name", "?")
+            rid = country.get("rid", "?")
+            rows.append([make_button(f"{name} ({rid})", callback_data=f"country_select_{panel}_{service}_{i}")])
     
     rows.append([make_button("Back", callback_data=f"svc_select_{panel}_{service}")])
     return build_inline_keyboard(rows)
@@ -457,6 +454,15 @@ def callback_handler(call):
             rows.append([make_button("Back", callback_data="admin_panel")])
             bot.edit_message_text("Delete Country:", cid, call.message.message_id, reply_markup=build_inline_keyboard(rows))
         
+        elif call.data.startswith("add_new_country_"):
+            if not is_admin(uid):
+                return
+            parts = call.data.replace("add_new_country_", "").split("_", 1)
+            panel = parts[0]
+            service = parts[1]
+            admin_state[uid] = {"panel": panel, "service": service, "adding": True}
+            bot.send_message(cid, f"Enter Country Name for {panel.upper()} - {service.upper()}:")
+        
         elif call.data.startswith("delcountry_"):
             if not is_admin(uid):
                 return
@@ -493,36 +499,41 @@ def handle_admin_input(message):
     txt = message.text.strip()
     cid = message.chat.id
     
-    if "panel" in state and "service" in state and "country" not in state:
-        admin_state[uid]["country"] = txt
-        bot.send_message(cid, "Enter Range (e.g. 8801):")
-    
-    elif "country" in state and "range" not in state:
-        admin_state[uid]["range"] = txt
+    # Adding new country flow
+    if state.get("adding"):
+        if "country" not in state:
+            # Country name input
+            admin_state[uid]["country"] = txt
+            bot.send_message(cid, f"Enter Range for {txt} (e.g. 8801):")
         
-        panel = state["panel"]
-        service = state["service"]
-        country = state["country"]
-        rid = txt
-        
-        load_admin_ranges()
-        
-        if panel not in admin_ranges:
-            admin_ranges[panel] = {}
-        if service not in admin_ranges[panel]:
-            admin_ranges[panel][service] = []
-        
-        for c in admin_ranges[panel][service]:
-            if c.get("name", "").lower() == country.lower():
-                c["rid"] = rid
-                break
-        else:
-            admin_ranges[panel][service].append({"name": country, "rid": rid})
-        
-        _fb_put("/admin_ranges", admin_ranges)
-        
-        admin_state.pop(uid, None)
-        bot.send_message(cid, f"Saved!\n{panel.upper()} - {service.upper()}\n{country} ({rid})", reply_markup=admin_panel_markup())
+        elif "range" not in state:
+            # Range input
+            admin_state[uid]["range"] = txt
+            
+            panel = state["panel"]
+            service = state["service"]
+            country = state["country"]
+            rid = txt
+            
+            load_admin_ranges()
+            
+            if panel not in admin_ranges:
+                admin_ranges[panel] = {}
+            if service not in admin_ranges[panel]:
+                admin_ranges[panel][service] = []
+            
+            # Check duplicate
+            for c in admin_ranges[panel][service]:
+                if c.get("name", "").lower() == country.lower():
+                    c["rid"] = rid
+                    break
+            else:
+                admin_ranges[panel][service].append({"name": country, "rid": rid})
+            
+            _fb_put("/admin_ranges", admin_ranges)
+            
+            admin_state.pop(uid, None)
+            bot.send_message(cid, f"SAVED!\n\n{panel.upper()} - {service.upper()}\n{country} ({rid})\n\nSaved to Firebase!", reply_markup=admin_panel_markup())
 
 # ===================== BOT RUN =====================
 def run_bot():
