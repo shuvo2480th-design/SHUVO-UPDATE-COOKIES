@@ -11,7 +11,7 @@ import traceback
 logging.basicConfig(level=logging.INFO)
 
 # ===================== NEXUS CONFIG =====================
-NEXUS_API_KEY  = "nx_I0puoaKJBgjjv618iqRKMrylA2zZQFgaJqD3NQ"
+NEXUS_API_KEY  = "nx_vSNXnzmDoioy9vFBpaFoLEXeBgRMxVMGeD09jQ"
 NEXUS_BASE_URL = "https://v2.nexus-x.site/api/v1"
 NEXUS_HEADERS  = {"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"}
 
@@ -185,35 +185,57 @@ def country_list_markup(panel, service):
     rows.append([make_button("Back", callback_data=f"svc_select_{panel}_{service}")])
     return build_inline_keyboard(rows)
 
+# ===================== SERVICE MAPPING =====================
+def get_nexus_sid(service_name):
+    """Service name কে NEXUS SID তে convert করছি"""
+    mapping = {
+        "facebook": "fb",
+        "whatsapp": "wa",
+        "telegram": "tg",
+        "instagram": "ig"
+    }
+    return mapping.get(service_name.lower(), service_name.lower())
+
 # ===================== PROCESS NUMBER =====================
 def process_number_nexus(chat_id, rid, service_name="wa"):
     nums = []
     countries = []
     api_ids = []
     
+    # Service name কে NEXUS SID তে convert করছি
+    sid = get_nexus_sid(service_name)
+    print(f"✅ NEXUS: service={service_name}, sid={sid}, rid={rid}")
+    
     for attempt in range(5):
         try:
             r = requests.post(
                 f"{NEXUS_BASE_URL}/numbers",
                 headers=NEXUS_HEADERS,
-                json={"range": rid, "sid": service_name.lower(), "no_plus": False, "national": False},
+                json={"range": rid, "sid": sid, "no_plus": False, "national": False},
                 timeout=15
             )
+            print(f"NEXUS Response: {r.status_code} - {r.text[:100]}")
             data = r.json()
             if data.get("ok"):
                 num = str(data.get("number", "")).replace("+", "")
                 country = data.get("country", "Unknown")
                 api_id = data.get("id")
                 
+                print(f"✅ Got number: {num}")
+                
                 if num not in nums:
                     nums.append(num)
                     countries.append(country)
                     api_ids.append(api_id)
                 break
+            else:
+                print(f"❌ API error: {data}")
             time.sleep(2)
-        except Exception:
+        except Exception as e:
+            print(f"❌ NEXUS error: {e}")
             time.sleep(2)
     
+    print(f"Final: nums={nums}, countries={countries}, api_ids={api_ids}")
     return nums, countries, api_ids
 
 def process_number_stex(chat_id, rid):
