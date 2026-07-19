@@ -1264,10 +1264,89 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
             time.sleep(2)
 
 # ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
+def process_number_nexus(message, edit_msg=None, service_name="wa", rid=None):
+    """NEXUS থেকে নাম্বার আনছি"""
+    chat_id = message.chat.id
+    if rid is None:
+        rid = user_ranges.get(chat_id) or message.text
+
+    loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
+    if edit_msg:
+        try:
+            bot.edit_message_text(loading_text, chat_id, edit_msg.message_id)
+            status_id = edit_msg.message_id
+        except Exception:
+            status_id = bot.send_message(chat_id, loading_text).message_id
+    else:
+        status_id = bot.send_message(chat_id, loading_text).message_id
+
+    nums = []
+    countries = []
+    max_retries = 5
+    
+    sid_map = {"facebook": "fb", "whatsapp": "wa", "telegram": "tg", "instagram": "ig"}
+    sid = sid_map.get(service_name.lower(), service_name.lower())
+
+    for attempt in range(max_retries):
+        try:
+            r = requests.post(
+                f"{NEXUS_BASE_URL}/numbers",
+                headers=NEXUS_HEADERS,
+                json={"range": rid, "sid": sid, "no_plus": False, "national": False},
+                timeout=15
+            )
+            data = r.json()
+            if data.get("ok"):
+                full_num = str(data.get("number", "")).replace("+", "")
+                country = data.get("country", "Unknown")
+                if full_num not in nums:
+                    nums.append(full_num)
+                    countries.append(country)
+                if len(nums) >= 2:
+                    break
+            if attempt < max_retries - 1:
+                try:
+                    bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt + 2}/{max_retries})", chat_id, status_id)
+                except:
+                    pass
+                time.sleep(2)
+        except:
+            if attempt < max_retries - 1:
+                time.sleep(2)
+
+    if not nums:
+        try:
+            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না", chat_id, status_id, reply_markup=try_again_markup())
+        except:
+            pass
+        return
+
+    user_numbers[chat_id] = nums
+    user_countries[chat_id] = countries
+
+    num_text = "✅ আপনার নাম্বার:\n\n"
+    for i, num in enumerate(nums):
+        num_text += f"{i+1}. {num} ({countries[i]})\n"
+
+    bot.edit_message_text(num_text, chat_id, status_id, reply_markup=get_otp_or_new_markup())
+
+
 def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
     if rid is None:
         rid = user_ranges.get(chat_id) or message.text
+    
+    # Panel check করছি
+    panel = "stex"  # default
+    if service_name in service_countries:
+        for c in service_countries[service_name]:
+            if c.get("rid") == rid:
+                panel = c.get("panel", "stex")
+                break
+    
+    # NEXUS selected, use NEXUS function
+    if panel == "nexus":
+        return process_number_nexus(message, edit_msg, service_name, rid)
 
     loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
     if edit_msg:
@@ -1471,19 +1550,23 @@ def handle_admin_state(message, uid, txt):
     elif step == "add_country_rid":
         service_name = state.get("service")
         country_name = state.get("country")
-        rid          = txt
-        countries    = service_countries[service_name]
+        panel = state.get("panel", "stex")
+        rid = txt
+        countries = service_countries[service_name]
         found = False
         for c in countries:
             if c["name"].lower() == country_name.lower():
-                c["rid"] = rid; found = True; break
+                c["rid"] = rid
+                c["panel"] = panel
+                found = True
+                break
         if not found:
-            countries.append({"name": country_name, "rid": rid})
+            countries.append({"name": country_name, "rid": rid, "panel": panel})
         save_countries_to_firebase(service_name)
         admin_state.pop(uid, None)
         bot.send_message(
             cid,
-            f"✅ সফলভাবে এড হয়েছে!\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
+            f"✅ সফলভাবে এড হয়েছে!\n🔵 Panel   : {panel.upper()}\n🌍 Service : {service_name}\n🌏 Country : {country_name}\n🔢 Range   : {rid}",
             reply_markup=admin_panel_markup()
         )
 
