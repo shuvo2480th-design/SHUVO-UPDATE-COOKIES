@@ -2394,26 +2394,9 @@ def handle_query(call):
 # ===================== BOT RUN =====================
 def run_bot():
     keep_alive()
-
-    # ✅ পুরনো webhook / আটকে থাকা session clear করা হচ্ছে যাতে
-    # "Error code 409: Conflict" (multiple getUpdates) না আসে
-    try:
-        bot.remove_webhook()
-        time.sleep(1)
-    except Exception:
-        logging.error(traceback.format_exc())
-
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
-        except telebot.apihelper.ApiTelegramException as e:
-            if "409" in str(e):
-                # অন্য কোথাও এখনো পোলিং চলছে — কিছুক্ষণ থেমে আবার চেষ্টা
-                logging.error("409 Conflict: অন্য একটি bot instance চলছে। ৫ সেকেন্ড পর retry...")
-                time.sleep(5)
-            else:
-                logging.error(traceback.format_exc())
-                time.sleep(2)
         except Exception:
             logging.error(traceback.format_exc())
             time.sleep(2)
