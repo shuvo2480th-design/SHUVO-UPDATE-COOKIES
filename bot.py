@@ -1277,7 +1277,16 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     if rid is None:
         rid = user_ranges.get(chat_id) or message.text
 
-    loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
+    # Panel check করছি first
+    panel = "stex"  # default
+    if service_name in service_countries:
+        countries_list = service_countries.get(service_name, [])
+        for country_data in countries_list:
+            if country_data.get("rid") == rid:
+                panel = country_data.get("panel", "stex")
+                break
+    
+    loading_text = f"⏳ PLEASE WAIT...\n🔄 {panel.upper()} নম্বর পেতে অপেক্ষা করুন..."
     if edit_msg:
         try:
             bot.edit_message_text(loading_text, chat_id, edit_msg.message_id)
@@ -1286,14 +1295,6 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
             status_id = bot.send_message(chat_id, loading_text).message_id
     else:
         status_id = bot.send_message(chat_id, loading_text).message_id
-
-    # Panel check করছি
-    panel = "stex"
-    if service_name in service_countries:
-        for c in service_countries[service_name]:
-            if c.get("rid") == rid:
-                panel = c.get("panel", "stex")
-                break
     
     # Panel save করছি OTP এর জন্য
     user_panel_for_otp[chat_id] = panel
@@ -1306,28 +1307,31 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     if panel == "nexus":
         # NEXUS থেকে নাম্বার আনছি
         sid = get_nexus_sid(service_name)
-        for attempt in range(5):
-            try:
-                r = requests.post(
-                    f"{NEXUS_BASE_URL}/numbers",
-                    headers=NEXUS_HEADERS,
-                    json={"range": rid, "sid": sid, "no_plus": False, "national": False},
-                    timeout=15
-                )
-                data = r.json()
-                if data.get("ok"):
-                    num = str(data.get("number", "")).replace("+", "")
-                    country = data.get("country", "Unknown")
-                    api_id = data.get("id")
-                    if num not in nums:
-                        nums.append(num)
-                        countries.append(country)
-                        api_ids.append(api_id)
-                    if len(nums) >= 2:
-                        break
-                time.sleep(1)
-            except Exception:
-                time.sleep(1)
+        try:
+            for attempt in range(5):
+                try:
+                    r = requests.post(
+                        f"{NEXUS_BASE_URL}/numbers",
+                        headers=NEXUS_HEADERS,
+                        json={"range": rid, "sid": sid, "no_plus": False, "national": False},
+                        timeout=15
+                    )
+                    data = r.json()
+                    if data.get("ok"):
+                        num = str(data.get("number", "")).replace("+", "")
+                        country = data.get("country", "Unknown")
+                        api_id = data.get("id")
+                        if num not in nums:
+                            nums.append(num)
+                            countries.append(country)
+                            api_ids.append(api_id)
+                        if len(nums) >= 2:
+                            break
+                    time.sleep(1)
+                except Exception as e:
+                    time.sleep(1)
+        except Exception:
+            pass
     else:
         # STEX থেকে নাম্বার আনছি
         for attempt in range(5):
@@ -1719,11 +1723,7 @@ def handle_query(call):
         state = admin_state.get(uid_str, {})
         panel = state.get("panel", "stex")
         admin_state[uid_str] = {"step": "add_country_name", "service": service_name, "panel": panel}
-        try:
-            bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
-        except Exception:
-            pass
-        msg = bot.send_message(cid, f"📝 {service_name} — দেশের নাম লিখুন:")
+        msg = bot.send_message(cid, f"✅ সার্ভিস: {service_name}\n\n📝 দেশের নাম লিখুন:", reply_markup=admin_cancel_markup())
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_user_message":
