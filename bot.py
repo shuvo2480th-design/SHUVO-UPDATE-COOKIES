@@ -74,6 +74,7 @@ user_ranges     = {}
 user_service    = {}
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
 user_countries  = {}
+user_api_ids    = {}      # chat_id → [nexus_id1, nexus_id2]  (OTP চেক করার জন্য /numbers/{id})
 user_panel_for_otp = {}  # Panel track করছি OTP এর জন্য       # chat_id → [country1, country2]
 received_otps   = {}
 used_otps       = {}
@@ -1238,6 +1239,59 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
             if not any(n in current_nums for n in phone_numbers):
                 otp_running[chat_id] = False; return
 
+            panel = user_panel_for_otp.get(chat_id, "stex")
+
+            if panel == "nexus":
+                # ✅ NEXUS নাম্বারের OTP /api/v1/numbers/{id} থেকে চেক করা হচ্ছে
+                api_ids = user_api_ids.get(chat_id, [])
+                try:
+                    for idx, api_id in enumerate(api_ids):
+                        if not api_id or api_id in used_otps.get(chat_id, []):
+                            continue
+                        otp = get_nexus_otp(api_id)
+                        if not otp:
+                            continue
+                        used_otps[chat_id].append(api_id)
+                        global_used_otps[chat_id].add(api_id)
+
+                        matched_num = phone_numbers[idx] if idx < len(phone_numbers) else (current_nums[0] if current_nums else "?")
+                        uid_str = str(chat_id)
+                        current_price = get_otp_price_from_firebase()
+                        new_bal = update_firebase_balance(uid_str, current_price)
+
+                        country_list     = user_countries.get(chat_id, [])
+                        detected_country = country_list[idx] if idx < len(country_list) else None
+                        flag_emoji       = get_flag(detected_country) if detected_country else None
+                        service          = user_service.get(chat_id, "Others")
+                        if flag_emoji and detected_country:
+                            update_traffic(service, detected_country, flag_emoji)
+
+                        received_otps[chat_id] = otp
+                        display_flag    = flag_emoji if flag_emoji else "🌍"
+                        display_country = detected_country if detected_country else "Unknown"
+                        text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n{display_flag}  : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                        kb = otp_result_markup(otp)
+                        if not first_otp_found and search_msg_id:
+                            try:
+                                bot.edit_message_text(text, chat_id, search_msg_id, reply_markup=kb)
+                                first_otp_found = True
+                            except Exception:
+                                try:
+                                    bot.send_message(chat_id, text, reply_markup=kb)
+                                    first_otp_found = True
+                                except Exception:
+                                    pass
+                        else:
+                            try:
+                                bot.send_message(chat_id, text, reply_markup=kb)
+                            except Exception:
+                                pass
+                    consecutive_errors = 0
+                except Exception:
+                    consecutive_errors += 1
+                time.sleep(5 if consecutive_errors >= 5 else 2)
+                continue
+
             try:
                 r = session.get(f"{BASE_URL}/success-otp", timeout=15)
                 r.raise_for_status()
@@ -1421,6 +1475,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     user_countries[chat_id] = countries
     user_ranges[chat_id]    = rid
     user_service[chat_id]   = service_name
+    user_api_ids[chat_id]   = api_ids if panel == "nexus" else []
     received_otps[chat_id]  = None
     used_otps[chat_id]      = []
 
@@ -2359,45 +2414,3 @@ def handle_query(call):
 
     elif call.data.startswith("reject_"):
         if not is_admin(uid):
-            bot.answer_callback_query(call.id, "❌ Admin only!"); return
-        target_uid = call.data.split("_")[1]
-        w          = withdraw_data.get(int(target_uid), {})
-        amount     = w.get("amount", 0)
-        method     = w.get("method", "")
-        number     = w.get("number", "")
-        withdraw_status[target_uid] = {
-            "status": "rejected", "amount": amount,
-            "method": method, "number": number
-        }
-        info   = withdraw_status.get(target_uid, {})
-        msg_id = info.get("msg_id")
-        rejected_text = (
-            f"❌ 𝐘𝐨𝐮𝐫 𝐰𝐢𝐭𝐡𝐝𝐫𝐚𝐰𝐚𝐥 𝐰𝐚𝐬 𝐫𝐞𝐣𝐞𝐜𝐭𝐞𝐝.\n\n"
-            f"📱 𝐍𝐮𝐦𝐛𝐞𝐫: {number}\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: {amount} TK\n\n"
-            "❌ 𝐒𝐭𝐚𝐭𝐮𝐬: 𝐑𝐞𝐣𝐞𝐜𝐭𝐞𝐝"
-        )
-        try:
-            if msg_id:
-                bot.edit_message_text(rejected_text, int(target_uid), msg_id)
-            else:
-                bot.send_message(target_uid, rejected_text)
-        except Exception:
-            try:
-                bot.send_message(target_uid, rejected_text)
-            except Exception:
-                pass
-        bot.edit_message_text("❌ Rejected", cid, call.message.message_id)
-
-# ===================== BOT RUN =====================
-def run_bot():
-    keep_alive()
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
-        except Exception:
-            logging.error(traceback.format_exc())
-            time.sleep(2)
-
-if __name__ == "__main__":
-    run_bot()
