@@ -1048,6 +1048,25 @@ def strd_command(message):
     search_msg = bot.send_message(chat_id, "🔍 OTP SEARCHING (∞)...\n⏳ Number change না হওয়া পর্যন্ত চালু...")
     threading.Thread(target=infinite_otp_search, args=(chat_id, list(nums), search_msg.message_id), daemon=True).start()
 
+# ===================== NEXUS OTP FETCH =====================
+def get_nexus_otp(api_id):
+    """NEXUS থেকে OTP fetch করছি /api/v1/numbers/{id} endpoint থেকে"""
+    try:
+        r = requests.get(
+            f"{NEXUS_BASE_URL}/numbers/{api_id}",
+            headers=NEXUS_HEADERS,
+            timeout=15
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("ok") and data.get("otps"):
+                otps = data.get("otps", [])
+                if otps:
+                    return otps[0].get("body", "")
+    except Exception as e:
+        pass
+    return None
+
 def infinite_otp_search(chat_id, start_numbers, search_msg_id):
     strd_running[chat_id] = True
     active_msg_id = search_msg_id
@@ -1077,45 +1096,34 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                 panel = user_panel_for_otp.get(chat_id, "stex")
                 
                 if panel == "nexus":
-                    # NEXUS থেকে OTP নিচ্ছি
+                    # NEXUS থেকে OTP নিচ্ছি - /api/v1/numbers/{id} endpoint থেকে
                     api_ids = user_ranges.get(chat_id, [])
                     if api_ids and isinstance(api_ids, list):
                         for api_id in api_ids:
-                            try:
-                                r = requests.get(
-                                    f"{NEXUS_BASE_URL}/numbers/{api_id}",
-                                    headers=NEXUS_HEADERS,
-                                    timeout=15
-                                )
-                                data = r.json()
-                                if data.get("ok") and data.get("otps"):
-                                    for otp_item in data.get("otps", []):
-                                        otp = otp_item.get("body", "")
-                                        if otp:
-                                            uid_str = str(chat_id)
-                                            current_price = get_otp_price_from_firebase()
-                                            new_bal = update_firebase_balance(uid_str, current_price)
-                                            
-                                            received_otps[chat_id] = otp
-                                            service = user_service.get(chat_id, "Others")
-                                            matched_num = current_nums[0] if current_nums else "?"
-                                            
-                                            text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n🌍 : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
-                                            kb = otp_result_markup(otp)
-                                            try:
-                                                bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
-                                            except Exception:
-                                                try:
-                                                    bot.send_message(chat_id, text, reply_markup=kb)
-                                                except Exception:
-                                                    pass
-                                            try:
-                                                active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
-                                            except Exception:
-                                                pass
-                                            break
-                            except Exception:
-                                pass
+                            otp = get_nexus_otp(api_id)
+                            if otp:
+                                uid_str = str(chat_id)
+                                current_price = get_otp_price_from_firebase()
+                                new_bal = update_firebase_balance(uid_str, current_price)
+                                
+                                received_otps[chat_id] = otp
+                                service = user_service.get(chat_id, "Others")
+                                matched_num = current_nums[0] if current_nums else "?"
+                                
+                                text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n🌍 : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                                kb = otp_result_markup(otp)
+                                try:
+                                    bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
+                                except Exception:
+                                    try:
+                                        bot.send_message(chat_id, text, reply_markup=kb)
+                                    except Exception:
+                                        pass
+                                try:
+                                    active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
+                                except Exception:
+                                    pass
+                                break
                 else:
                     # STEX থেকে OTP নিচ্ছি
                     r = session.get(f"{BASE_URL}/success-otp", timeout=10)
