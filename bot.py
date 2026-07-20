@@ -75,6 +75,7 @@ user_service    = {}
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
 user_countries  = {}
 user_panel_for_otp = {}  # Panel track করছি OTP এর জন্য       # chat_id → [country1, country2]
+user_nexus_ids     = {}  # chat_id → [api_id1, api_id2] nexus number IDs
 received_otps   = {}
 used_otps       = {}
 otp_running     = {}
@@ -1050,20 +1051,25 @@ def strd_command(message):
 
 # ===================== NEXUS OTP FETCH =====================
 def get_nexus_otp(api_id):
-    """NEXUS থেকে OTP fetch করছি /api/v1/numbers/{id} endpoint থেকে"""
+    """NEXUS থেকে OTP fetch — /api/v1/numbers/{id}"""
     try:
         r = requests.get(
             f"{NEXUS_BASE_URL}/numbers/{api_id}",
-            headers=NEXUS_HEADERS,
+            headers={"Authorization": f"Bearer {NEXUS_API_KEY}"},
             timeout=15
         )
         if r.status_code == 200:
             data = r.json()
-            if data.get("ok") and data.get("otps"):
-                otps = data.get("otps", [])
-                if otps:
-                    return otps[0].get("body", "")
-    except Exception as e:
+            otps = data.get("otps") or []
+            if otps:
+                otp_entry = otps[0]
+                # nexus OTP text field: "text" or "body" or "message"
+                return (
+                    otp_entry.get("text") or
+                    otp_entry.get("body") or
+                    otp_entry.get("message") or ""
+                )
+    except Exception:
         pass
     return None
 
@@ -1096,34 +1102,62 @@ def infinite_otp_search(chat_id, start_numbers, search_msg_id):
                 panel = user_panel_for_otp.get(chat_id, "stex")
                 
                 if panel == "nexus":
-                    # NEXUS থেকে OTP নিচ্ছি - /api/v1/numbers/{id} endpoint থেকে
-                    api_ids = user_ranges.get(chat_id, [])
+                    # NEXUS থেকে OTP — /api/v1/numbers/{id}
+                    api_ids = user_nexus_ids.get(chat_id, [])
+                    if not api_ids:
+                        api_ids = user_ranges.get(chat_id, [])
                     if api_ids and isinstance(api_ids, list):
-                        for api_id in api_ids:
-                            otp = get_nexus_otp(api_id)
-                            if otp:
-                                uid_str = str(chat_id)
-                                current_price = get_otp_price_from_firebase()
-                                new_bal = update_firebase_balance(uid_str, current_price)
-                                
-                                received_otps[chat_id] = otp
-                                service = user_service.get(chat_id, "Others")
-                                matched_num = current_nums[0] if current_nums else "?"
-                                
-                                text = f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n🌍 : {matched_num}\n💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
-                                kb = otp_result_markup(otp)
-                                try:
-                                    bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
-                                except Exception:
+                        for i, api_id in enumerate(api_ids):
+                            if not api_id: continue
+                            try:
+                                r = requests.get(
+                                    f"{NEXUS_BASE_URL}/numbers/{api_id}",
+                                    headers={"Authorization": f"Bearer {NEXUS_API_KEY}"},
+                                    timeout=15
+                                )
+                                if r.status_code != 200: continue
+                                data = r.json()
+                                otps = data.get("otps") or []
+                                for otp_entry in otps:
+                                    otp_id = str(otp_entry.get("id", ""))
+                                    if otp_id in global_used_otps.get(chat_id, set()): continue
+                                    otp_text = (
+                                        otp_entry.get("text") or
+                                        otp_entry.get("body") or
+                                        otp_entry.get("message") or ""
+                                    )
+                                    if not otp_text: continue
+                                    # mark used
+                                    global_used_otps[chat_id].add(otp_id)
+                                    used_otps[chat_id].append(otp_id)
+
+                                    uid_str = str(chat_id)
+                                    current_price = get_otp_price_from_firebase()
+                                    update_firebase_balance(uid_str, current_price)
+                                    received_otps[chat_id] = otp_text
+                                    service    = user_service.get(chat_id, "Others")
+                                    nums_list  = user_numbers.get(chat_id, [])
+                                    if not isinstance(nums_list, list): nums_list = [nums_list]
+                                    matched_num = nums_list[i] if i < len(nums_list) else (nums_list[0] if nums_list else "?")
+                                    country_list = user_countries.get(chat_id, [])
+                                    detected_country = country_list[i] if i < len(country_list) else None
+                                    flag_emoji = get_flag(detected_country) if detected_country else "🌍"
+
+                                    text = (
+                                        f"╭──────────────╮\n📩 {service} OTP  ✅\n╰──────────────╯\n"
+                                        f"{flag_emoji}  : {matched_num}\n"
+                                        f"💸 𝐄𝐚𝐫𝐧𝐞𝐝 : {current_price:.2f} ৳\n✅ 𝐒𝐭𝐚𝐭𝐮𝐬 : 𝐒𝐮𝐜𝐜𝐞𝐬𝐬"
+                                    )
+                                    kb = otp_result_markup(otp_text)
                                     try:
-                                        bot.send_message(chat_id, text, reply_markup=kb)
+                                        bot.edit_message_text(text, chat_id, active_msg_id, reply_markup=kb)
                                     except Exception:
-                                        pass
-                                try:
-                                    active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
-                                except Exception:
-                                    pass
-                                break
+                                        try: bot.send_message(chat_id, text, reply_markup=kb)
+                                        except Exception: pass
+                                    try:
+                                        active_msg_id = bot.send_message(chat_id, "🔍 Next OTP SEARCHING (∞)...\n⏳ Waiting...").message_id
+                                    except Exception: pass
+                            except Exception: continue
                 else:
                     # STEX থেকে OTP নিচ্ছি
                     r = session.get(f"{BASE_URL}/success-otp", timeout=10)
@@ -1364,22 +1398,22 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     api_ids = []
 
     if panel == "nexus":
-        # NEXUS থেকে
+        # NEXUS থেকে — 201 status = success
         sid = get_nexus_sid(service_name)
         for attempt in range(5):
             try:
                 r = requests.post(
                     f"{NEXUS_BASE_URL}/numbers",
-                    headers=NEXUS_HEADERS,
+                    headers={"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"},
                     json={"range": rid, "sid": sid, "no_plus": False, "national": False},
                     timeout=15
                 )
                 data = r.json()
-                if data.get("ok"):
-                    num = str(data.get("number", "")).replace("+", "")
+                if r.status_code == 201 or data.get("ok") or data.get("status") == "success":
+                    num     = str(data.get("number", "")).replace("+", "")
                     country = data.get("country", "Unknown")
-                    api_id = data.get("id")
-                    if num not in nums:
+                    api_id  = data.get("id")
+                    if num and num not in nums:
                         nums.append(num)
                         countries.append(country)
                         api_ids.append(api_id)
@@ -1421,6 +1455,7 @@ def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     user_countries[chat_id] = countries
     user_ranges[chat_id]    = rid
     user_service[chat_id]   = service_name
+    user_nexus_ids[chat_id] = api_ids  # nexus api IDs সেভ
     received_otps[chat_id]  = None
     used_otps[chat_id]      = []
 
