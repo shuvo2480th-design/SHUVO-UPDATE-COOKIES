@@ -1789,13 +1789,11 @@ def handle_query(call):
         state = admin_state.get(uid_str, {})
         panel = state.get("panel", "stex")
         admin_state[uid_str] = {"step": "add_country_name", "service": service_name, "panel": panel}
-        msg = bot.send_message(cid, f"✅ সার্ভিস: {service_name}\n\n📝 দেশের নাম লিখুন:", reply_markup=admin_cancel_markup())
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, m.from_user.id, m.text))
         try:
-            bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
+            bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\n📝 দেশের নাম লিখুন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
+            msg = call.message
         except Exception:
-            pass
-        msg = bot.send_message(cid, f"📝 {service_name} — দেশের নাম লিখুন:")
+            msg = bot.send_message(cid, f"✅ সার্ভিস: {service_name}\n\n📝 দেশের নাম লিখুন:", reply_markup=admin_cancel_markup())
         bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
 
     elif call.data == "adm_user_message":
@@ -2394,9 +2392,25 @@ def handle_query(call):
 # ===================== BOT RUN =====================
 def run_bot():
     keep_alive()
+
+    # ✅ পুরনো webhook / আটকে থাকা session clear করা হচ্ছে যাতে
+    # "Error code 409: Conflict" (multiple getUpdates) না আসে
+    try:
+        bot.remove_webhook()
+        time.sleep(1)
+    except Exception:
+        logging.error(traceback.format_exc())
+
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=60, long_polling_timeout=60)
+        except telebot.apihelper.ApiTelegramException as e:
+            if "409" in str(e):
+                logging.error("409 Conflict: অন্য একটি bot instance চলছে। ৫ সেকেন্ড পর retry...")
+                time.sleep(5)
+            else:
+                logging.error(traceback.format_exc())
+                time.sleep(2)
         except Exception:
             logging.error(traceback.format_exc())
             time.sleep(2)
