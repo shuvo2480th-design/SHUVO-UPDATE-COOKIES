@@ -1543,22 +1543,32 @@ def handle_text(message):
 
 # ===================== ADMIN PANEL MULTI-STEP =====================
 def handle_admin_state(message, uid, txt):
+    uid = str(uid)  # uid কে string এ convert করছি
     state = admin_state.get(uid, {})
     step  = state.get("step")
     cid   = message.chat.id
 
     if step == "add_country_name":
+        if uid not in admin_state:
+            admin_state[uid] = {}
         admin_state[uid]["country"] = txt
         admin_state[uid]["step"]    = "add_country_rid"
         msg = bot.send_message(cid, f"✅ দেশের নাম: {txt}\n\nএখন রেন্জ (RID) দিন:", reply_markup=admin_cancel_markup())
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, m.from_user.id, m.text))
 
     elif step == "add_country_rid":
         service_name = state.get("service")
         country_name = state.get("country")
         panel = state.get("panel", "stex")
         rid = txt
-        countries = service_countries[service_name]
+        
+        # Validate data
+        if not service_name or not country_name:
+            bot.send_message(cid, "❌ ডেটা হারিয়ে গেছে। আবার চেষ্টা করুন।", reply_markup=admin_panel_markup())
+            admin_state.pop(uid, None)
+            return
+        
+        countries = service_countries.get(service_name, [])
         found = False
         for c in countries:
             if c["name"].lower() == country_name.lower():
@@ -1580,7 +1590,7 @@ def handle_admin_state(message, uid, txt):
         admin_state[uid]["target_uid"] = txt
         admin_state[uid]["step"]       = "user_message_text"
         msg = bot.send_message(cid, f"👤 ইউজার ID: {txt}\n\nএখন মেসেজ লিখুন:")
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid, m.text))
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, m.from_user.id, m.text))
 
     elif step == "user_message_text":
         admin_state[uid]["msg_text"] = txt
@@ -1780,7 +1790,7 @@ def handle_query(call):
         panel = state.get("panel", "stex")
         admin_state[uid_str] = {"step": "add_country_name", "service": service_name, "panel": panel}
         msg = bot.send_message(cid, f"✅ সার্ভিস: {service_name}\n\n📝 দেশের নাম লিখুন:", reply_markup=admin_cancel_markup())
-        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, uid_str, m.text))
+        bot.register_next_step_handler(msg, lambda m: handle_admin_state(m, m.from_user.id, m.text))
         try:
             bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
