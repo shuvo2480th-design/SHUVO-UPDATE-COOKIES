@@ -38,13 +38,14 @@ API_KEY      = "MUBTR1MKUBO"
 BOT_TOKEN    = "8738544813:AAE30UcDfQDZsPYr43GCKXGoyk_h6OpqZvU"
 BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS      = {"mauthapi": API_KEY}
-ADMIN_ID     = "6470499890"
-GROUP_URL    = "https://t.me/tem_withh"
+
 # ===================== NEXUS CONFIG =====================
 NEXUS_API_KEY  = "nx_y8O9Wjypv-Kugp8JDWgU3ZNd9qTaCaHfKoTZOg"
 NEXUS_BASE_URL = "https://v2.nexus-x.site/api/v1"
 NEXUS_HEADERS  = {"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"}
 
+ADMIN_ID     = "6470499890"
+GROUP_URL    = "https://t.me/tem_withh"
 FIREBASE_URL = "https://my-otp-bot-e8ef9-default-rtdb.firebaseio.com/"
 
 REQUIRED_CHANNELS = ["@range_channele", "@tem_withh"]
@@ -72,7 +73,8 @@ users           = {}
 user_ranges     = {}
 user_service    = {}
 user_numbers    = {}       # chat_id → [num1, num2]  (list of up to 2)
-user_countries  = {}       # chat_id → [country1, country2]
+user_countries  = {}
+user_panel_for_otp = {}  # Panel track করছি OTP এর জন্য       # chat_id → [country1, country2]
 received_otps   = {}
 used_otps       = {}
 otp_running     = {}
@@ -1264,8 +1266,13 @@ def auto_check_otp(chat_id, phone_numbers, number_msg_id=None, search_msg_id=Non
             time.sleep(2)
 
 # ===================== NUMBER PROCESSING — ২টা নাম্বার =====================
-def process_number_nexus(message, edit_msg=None, service_name="wa", rid=None):
-    """NEXUS থেকে নাম্বার আনছি"""
+# ===================== NEXUS SERVICE MAPPING =====================
+def get_nexus_sid(service_name):
+    """Service কে NEXUS SID তে convert করছি"""
+    mapping = {"facebook": "fb", "whatsapp": "wa", "telegram": "tg", "instagram": "ig"}
+    return mapping.get(service_name.lower(), service_name.lower())
+
+def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
     chat_id = message.chat.id
     if rid is None:
         rid = user_ranges.get(chat_id) or message.text
@@ -1280,239 +1287,71 @@ def process_number_nexus(message, edit_msg=None, service_name="wa", rid=None):
     else:
         status_id = bot.send_message(chat_id, loading_text).message_id
 
-    nums = []
-    countries = []
-    max_retries = 5
-    
-    sid_map = {"facebook": "fb", "whatsapp": "wa", "telegram": "tg", "instagram": "ig"}
-    sid = sid_map.get(service_name.lower(), service_name.lower())
-
-    for attempt in range(max_retries):
-        try:
-            r = requests.post(
-                f"{NEXUS_BASE_URL}/numbers",
-                headers=NEXUS_HEADERS,
-                json={"range": rid, "sid": sid, "no_plus": False, "national": False},
-                timeout=15
-            )
-            data = r.json()
-            if data.get("ok"):
-                full_num = str(data.get("number", "")).replace("+", "")
-                country = data.get("country", "Unknown")
-                if full_num not in nums:
-                    nums.append(full_num)
-                    countries.append(country)
-                if len(nums) >= 2:
-                    break
-            if attempt < max_retries - 1:
-                try:
-                    bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt + 2}/{max_retries})", chat_id, status_id)
-                except:
-                    pass
-                time.sleep(2)
-        except:
-            if attempt < max_retries - 1:
-                time.sleep(2)
-
-    if not nums:
-        try:
-            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না", chat_id, status_id, reply_markup=try_again_markup())
-        except:
-            pass
-        return
-
-    user_numbers[chat_id] = nums
-    user_countries[chat_id] = countries
-
-    num_text = "✅ আপনার নাম্বার:\n\n"
-    for i, num in enumerate(nums):
-        num_text += f"{i+1}. {num} ({countries[i]})\n"
-
-    bot.edit_message_text(num_text, chat_id, status_id, reply_markup=get_otp_or_new_markup())
-
-
-# ===================== SERVICE MAPPING =====================
-def get_nexus_sid(service_name):
-    """Service name কে NEXUS SID তে convert করছি"""
-    mapping = {
-        "facebook": "fb",
-        "whatsapp": "wa",
-        "telegram": "tg",
-        "instagram": "ig"
-    }
-    return mapping.get(service_name.lower(), service_name.lower())
-
-# ===================== NEXUS PROCESS =====================
-def process_number_nexus(chat_id, rid, service_name="wa"):
-    nums = []
-    countries = []
-    api_ids = []
-    
-    sid = get_nexus_sid(service_name)
-    
-    for attempt in range(5):
-        try:
-            r = requests.post(
-                f"{NEXUS_BASE_URL}/numbers",
-                headers=NEXUS_HEADERS,
-                json={"range": rid, "sid": sid, "no_plus": False, "national": False},
-                timeout=15
-            )
-            data = r.json()
-            if data.get("ok"):
-                num = str(data.get("number", "")).replace("+", "")
-                country = data.get("country", "Unknown")
-                api_id = data.get("id")
-                
-                if num not in nums:
-                    nums.append(num)
-                    countries.append(country)
-                    api_ids.append(api_id)
-                break
-            time.sleep(2)
-        except Exception:
-            time.sleep(2)
-    
-    return nums, countries, api_ids
-
-# ===================== STEX PROCESS =====================
-def process_number_stex(chat_id, rid):
-    nums = []
-    countries = []
-    
-    for attempt in range(5):
-        try:
-            r = session.post(
-                f"{STEX_BASE_URL}/getnum",
-                headers=STEX_HEADERS,
-                json={"rid": rid},
-                timeout=15
-            )
-            data = r.json()
-            if data.get("meta", {}).get("code") == 200:
-                full_num = str(data["data"]["full_number"]).replace("+", "")
-                country = data["data"].get("country", "Unknown")
-                
-                if full_num not in nums:
-                    nums.append(full_num)
-                    countries.append(country)
-                break
-            time.sleep(2)
-        except Exception:
-            time.sleep(2)
-    
-    return nums, countries
-
-def process_number(message, edit_msg=None, service_name="Unknown", rid=None):
-    chat_id = message.chat.id
-    if rid is None:
-        rid = user_ranges.get(chat_id) or message.text
-    
     # Panel check করছি
-    panel = "stex"  # default
+    panel = "stex"
     if service_name in service_countries:
         for c in service_countries[service_name]:
             if c.get("rid") == rid:
                 panel = c.get("panel", "stex")
                 break
     
-    # Panel অনুযায়ী API call করছি
-    if panel == "nexus":
-        nums, countries, api_ids = process_number_nexus(chat_id, rid, service_name)
-    else:  # stex
-        nums, countries = process_number_stex(chat_id, rid)
-        api_ids = []
+    # Panel save করছি OTP এর জন্য
+    user_panel_for_otp[chat_id] = panel
     
-    # নাম্বার না পেলে
-    if not nums:
-        loading_text = "⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।"
-        if edit_msg:
-            try:
-                bot.edit_message_text(loading_text, chat_id, edit_msg.message_id, reply_markup=try_again_markup())
-            except Exception:
-                pass
-        else:
-            bot.send_message(chat_id, loading_text, reply_markup=try_again_markup())
-        return
-    
-    # নাম্বার পেলে store করছি
-    user_numbers[chat_id] = nums
-    user_countries[chat_id] = countries
-    user_ranges_full[chat_id] = api_ids if api_ids else None
-    
-    # নাম্বার display করছি
-    num_text = "✅ আপনার নাম্বার:\n\n"
-    for i, num in enumerate(nums):
-        num_text += f"{i+1}. {num} ({countries[i]})\n"
-    
-    if edit_msg:
-        try:
-            bot.edit_message_text(num_text, chat_id, edit_msg.message_id, reply_markup=get_otp_or_new_markup())
-        except Exception:
-            bot.send_message(chat_id, num_text, reply_markup=get_otp_or_new_markup())
-    else:
-        bot.send_message(chat_id, num_text, reply_markup=get_otp_or_new_markup())
-    
-    return
-
-    loading_text = "⏳ PLEASE WAIT...\n🔄 NUMBER GENERATING..."
-    if edit_msg:
-        try:
-            bot.edit_message_text(loading_text, chat_id, edit_msg.message_id)
-            status_id = edit_msg.message_id
-        except Exception:
-            status_id = bot.send_message(chat_id, loading_text).message_id
-    else:
-        status_id = bot.send_message(chat_id, loading_text).message_id
-
-    # ✅ ২টা নাম্বার নাও
-    nums      = []
+    # নাম্বার নিচ্ছি
+    nums = []
     countries = []
-    max_retries = 5
+    api_ids = []
 
-    for attempt in range(max_retries):
-        try:
-            r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
-            data = r.json()
-            if data.get("meta", {}).get("code") == 200:
-                full_num = str(data["data"]["full_number"]).replace("+", "")
-                country  = data["data"].get("country", "Unknown")
-                if full_num not in nums:
-                    nums.append(full_num)
-                    countries.append(country)
-                break
-            if attempt < max_retries - 1:
-                try:
-                    bot.edit_message_text(f"⏳ নাম্বার খোঁজা হচ্ছে... ({attempt + 2}/{max_retries})", chat_id, status_id)
-                except Exception:
-                    pass
-                time.sleep(3)
-        except Exception:
-            if attempt < max_retries - 1:
-                time.sleep(3)
+    if panel == "nexus":
+        # NEXUS থেকে নাম্বার আনছি
+        sid = get_nexus_sid(service_name)
+        for attempt in range(5):
+            try:
+                r = requests.post(
+                    f"{NEXUS_BASE_URL}/numbers",
+                    headers=NEXUS_HEADERS,
+                    json={"range": rid, "sid": sid, "no_plus": False, "national": False},
+                    timeout=15
+                )
+                data = r.json()
+                if data.get("ok"):
+                    num = str(data.get("number", "")).replace("+", "")
+                    country = data.get("country", "Unknown")
+                    api_id = data.get("id")
+                    if num not in nums:
+                        nums.append(num)
+                        countries.append(country)
+                        api_ids.append(api_id)
+                    if len(nums) >= 2:
+                        break
+                time.sleep(1)
+            except Exception:
+                time.sleep(1)
+    else:
+        # STEX থেকে নাম্বার আনছি
+        for attempt in range(5):
+            try:
+                r = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
+                data = r.json()
+                if data.get("meta", {}).get("code") == 200:
+                    full_num = str(data["data"]["full_number"]).replace("+", "")
+                    country = data["data"].get("country", "Unknown")
+                    if full_num not in nums:
+                        nums.append(full_num)
+                        countries.append(country)
+                    if len(nums) >= 2:
+                        break
+                time.sleep(1)
+            except Exception:
+                time.sleep(1)
 
     if not nums:
         try:
-            bot.edit_message_text("⚠️ এখন নাম্বার পাওয়া যাচ্ছে না, একটু পরে আবার চেষ্টা করুন।", chat_id, status_id, reply_markup=try_again_markup())
+            bot.edit_message_text(f"⚠️ {panel.upper()} থেকে নাম্বার পাওয়া যায়নি। পরে চেষ্টা করুন।", chat_id, status_id, reply_markup=try_again_markup())
         except Exception:
             pass
         return
-
-    # ২য় নাম্বার নাও
-    for attempt in range(3):
-        try:
-            r    = session.post(f"{BASE_URL}/getnum", json={"rid": rid}, timeout=15)
-            data = r.json()
-            if data.get("meta", {}).get("code") == 200:
-                full_num2 = str(data["data"]["full_number"]).replace("+", "")
-                country2  = data["data"].get("country", "Unknown")
-                if full_num2 not in nums:
-                    nums.append(full_num2)
-                    countries.append(country2)
-                break
-            time.sleep(2)
-        except Exception:
-            time.sleep(2)
 
     # State সেট করো
     otp_running[chat_id]    = False
@@ -1860,7 +1699,7 @@ def handle_query(call):
         if not is_admin(uid): return
         try:
             kb = types.InlineKeyboardMarkup()
-            kb.add(types.InlineKeyboardButton("STEX", callback_data="adm_panel_stex"), types.InlineKeyboardButton("NEXUS", callback_data="adm_panel_nexus"))
+            kb.add(types.InlineKeyboardButton("🔵 STEX", callback_data="adm_panel_stex"), types.InlineKeyboardButton("🟠 NEXUS", callback_data="adm_panel_nexus"))
             bot.edit_message_text("📱 কোন পেনেলে রেঞ্জ এড করবেন?", cid, call.message.message_id, reply_markup=kb)
         except Exception:
             pass
@@ -1877,7 +1716,9 @@ def handle_query(call):
     elif call.data.startswith("adm_svc_addcountry_"):
         if not is_admin(uid): return
         service_name = call.data.replace("adm_svc_addcountry_", "")
-        admin_state[uid_str] = {"step": "add_country_name", "service": service_name}
+        state = admin_state.get(uid_str, {})
+        panel = state.get("panel", "stex")
+        admin_state[uid_str] = {"step": "add_country_name", "service": service_name, "panel": panel}
         try:
             bot.edit_message_text(f"✅ সার্ভিস: {service_name}\n\nদেশের নাম দিন:", cid, call.message.message_id, reply_markup=admin_cancel_markup())
         except Exception:
