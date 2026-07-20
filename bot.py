@@ -40,7 +40,7 @@ BASE_URL     = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
 HEADERS      = {"mauthapi": API_KEY}
 
 # ===================== NEXUS CONFIG =====================
-NEXUS_API_KEY  = "nx_y8O9Wjypv-Kugp8JDWgU3ZNd9qTaCaHfKoTZOg"
+NEXUS_API_KEY  = "nx_uI0WH8SPgedTuHsjVhZ98VpafIG4H3lHuHUSXA"
 NEXUS_BASE_URL = "https://v2.nexus-x.site/api/v1"
 NEXUS_HEADERS  = {"Authorization": f"Bearer {NEXUS_API_KEY}", "Content-Type": "application/json"}
 
