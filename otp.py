@@ -33,11 +33,20 @@ def keep_alive():
 # ===================== CONFIG =====================
 BOT_TOKEN         = "8764978166:AAH5tQLO71RCoCN1qtAr6xebGxFYiRT9z4A"
 CHANNEL_ID        = "-1002670575248"
+
+# ===== STEX CONFIG =====
 API_KEY           = "MUBTR1MKUBO"
 CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
 HEADERS           = {"mauthapi": API_KEY}
+
+# ===== NEXUS CONFIG =====
+NEXUS_API_KEY     = "nx_y8O9Wjypv-Kugp8JDWgU3ZNd9qTaCaHfKoTZOg"
+NEXUS_BASE_URL    = "https://v2.nexus-x.site/api/v1"
+NEXUS_HEADERS     = {"Authorization": f"Bearer {NEXUS_API_KEY}"}
+
 DB_FILE           = "otp_history.pkl"
-AUTO_DELETE_SEC   = 90  # ৯০ সেকেন্ড পর অটো ডিলিট
+NEXUS_DB_FILE     = "nexus_otp_history.pkl"
+AUTO_DELETE_SEC   = 90
 
 BD_TZ = timezone(timedelta(hours=6))
 
@@ -46,6 +55,12 @@ def bd_time():
 
 bot = telebot.TeleBot(BOT_TOKEN)
 bot.remove_webhook()
+
+# NEXUS API IDs যা track করব
+NEXUS_TRACKING = {
+    # "api_id_here": "number_here"
+    # Example: "a1b2c3d4-1234-5678-90ab-cdef12345678": "+8801XXXXXXXXX"
+}
 
 # ===================== দেশ ম্যাপ =====================
 COUNTRY_NAME_MAP = {
@@ -369,10 +384,67 @@ def send_styled_otp(hit):
 
     send_with_styled_buttons(text, otp_code, real_digits)
 
+# ===================== NEXUS OTP HANDLER =====================
+def send_nexus_otp(api_id, number, otp_data):
+    """NEXUS থেকে OTP পেলে channel এ পাঠাব"""
+    try:
+        flag, short_code, lang, country = get_country_info(number)
+        
+        real_digits = re.sub(r'\D', '', str(number))
+        filled_num = real_digits
+        display_masked = filled_num[:4] + "★★" + filled_num[-4:]
+        
+        otp_body = otp_data.get("body", "")
+        otp_code = extract_otp(otp_body, number)
+        if not otp_code:
+            otp_code = re.sub(r'\D', '', otp_body)[:8] or "------"
+        
+        service = detect_service(otp_body)
+        text = build_message(display_masked, flag, short_code, service, lang)
+        
+        send_with_styled_buttons(text, otp_code, real_digits)
+        print(f"✅ NEXUS OTP sent: {api_id} -> {otp_code}")
+    except Exception as e:
+        print(f"[NEXUS Error] {e}")
+
+def check_nexus_otp():
+    """NEXUS API থেকে OTP check করছি"""
+    try:
+        history = pickle.load(open(NEXUS_DB_FILE, "rb")) if os.path.exists(NEXUS_DB_FILE) else {}
+        
+        for api_id, number in NEXUS_TRACKING.items():
+            try:
+                r = requests.get(
+                    f"{NEXUS_BASE_URL}/numbers/{api_id}",
+                    headers=NEXUS_HEADERS,
+                    timeout=15
+                )
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    
+                    if data.get("ok") and data.get("otps"):
+                        for otp_item in data.get("otps", []):
+                            otp_id = otp_item.get("id")
+                            
+                            if otp_id and otp_id not in history:
+                                send_nexus_otp(api_id, number, otp_item)
+                                history[otp_id] = True
+                                time.sleep(1)
+                
+            except Exception as e:
+                print(f"[NEXUS Check Error] {e}")
+        
+        # Save history
+        pickle.dump(history, open(NEXUS_DB_FILE, "wb"))
+    except Exception as e:
+        print(f"[NEXUS History Error] {e}")
+
 def run_bot():
-    print("🚀 OTP Bot (Console API) started...")
+    print("🚀 OTP Bot (STEX + NEXUS) started...")
     while True:
         try:
+            # STEX Console API check করছি
             res = requests.get(CONSOLE_URL, headers=HEADERS, timeout=10).json()
             if res.get("meta", {}).get("status") == "ok":
                 history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
@@ -384,13 +456,20 @@ def run_bot():
                         pickle.dump(history, open(DB_FILE, "wb"))
                         time.sleep(1.5)
         except Exception as e:
-            print(f"[Error] {e}")
+            print(f"[STEX Error] {e}")
+        
+        # NEXUS check করছি
+        try:
+            check_nexus_otp()
+        except Exception as e:
+            print(f"[NEXUS Polling Error] {e}")
+        
         time.sleep(10)
 
 # ===================== MAIN =====================
 if __name__ == "__main__":
     keep_alive()
     threading.Thread(target=run_bot, daemon=True).start()
-    print("✅ OTP Bot running!")
+    print("✅ NEXUS + STEX OTP Bot running!")
     while True:
         time.sleep(60)
