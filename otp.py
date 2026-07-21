@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 
 import requests
@@ -37,16 +36,15 @@ CHANNEL_ID        = "-1002670575248"
 
 # ===== STEX CONFIG =====
 API_KEY           = "MUBTR1MKUBO"
-BASE_URL          = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api"
+CONSOLE_URL       = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/console"
 HEADERS           = {"mauthapi": API_KEY}
-SUCCESS_OTP_URL   = "https://api.2oo9.cloud/MXS47FLFX0U/tness/@public/api/success-otp"
 
 # ===== NEXUS CONFIG =====
-NEXUS_API_KEY     = "nx_uI0WH8SPgedTuHsjVhZ98VpafIG4H3lHuHUSXA"
+NEXUS_API_KEY     = "nx_y8O9Wjypv-Kugp8JDWgU3ZNd9qTaCaHfKoTZOg"
 NEXUS_BASE_URL    = "https://v2.nexus-x.site/api/v1"
 NEXUS_HEADERS     = {"Authorization": f"Bearer {NEXUS_API_KEY}"}
 
-DB_FILE           = "stex_tracking.pkl"
+DB_FILE           = "otp_history.pkl"
 NEXUS_DB_FILE     = "nexus_otp_history.pkl"
 AUTO_DELETE_SEC   = 90
 
@@ -58,83 +56,119 @@ def bd_time():
 bot = telebot.TeleBot(BOT_TOKEN)
 bot.remove_webhook()
 
-# Tracking numbers - STEX থেকে allocate করা numbers
-TRACKING_NUMBERS = {}  # {"range_id": "number"}
-
-# NEXUS API IDs
+# NEXUS API IDs যা track করব
 NEXUS_TRACKING = {
     # "api_id_here": "number_here"
+    # Example: "a1b2c3d4-1234-5678-90ab-cdef12345678": "+8801XXXXXXXXX"
 }
 
 # ===================== দেশ ম্যাপ =====================
 COUNTRY_NAME_MAP = {
-    "ivory coast": "CI", "côte d'ivoire": "CI", "guinea": "GN",
-    "guinea bissau": "GW", "south korea": "KR", "russia": "RU",
-    "tanzania": "TZ", "syria": "SY", "iran": "IR", "vietnam": "VN",
-    "laos": "LA", "moldova": "MD", "congo": "CG", "dr congo": "CD",
-    "palestine": "PS", "taiwan": "TW", "cape verde": "CV",
-    "myanmar": "MM", "eswatini": "SZ", "kazakhstan": "KZ",
-    "tajikistan": "TJ", "central african republic": "CF",
-    "venezuela": "VE", "bolivia": "BO", "trinidad": "TT", "haiti": "HT",
-    "cameroon": "CM", "senegal": "SN", "mali": "ML", "niger": "NE",
-    "burkina faso": "BF", "togo": "TG", "ghana": "GH",
-    "sierra leone": "SL", "liberia": "LR", "gambia": "GM",
-    "mauritania": "MR", "ethiopia": "ET", "kenya": "KE", "uganda": "UG",
-    "rwanda": "RW", "zambia": "ZM", "zimbabwe": "ZW", "mozambique": "MZ",
-    "angola": "AO", "malawi": "MW", "madagascar": "MG", "somalia": "SO",
-    "sudan": "SD", "chad": "TD", "nigeria": "NG", "egypt": "EG",
-    "morocco": "MA", "algeria": "DZ", "tunisia": "TN", "libya": "LY",
-    "south africa": "ZA", "iraq": "IQ", "jordan": "JO", "saudi arabia": "SA",
-    "yemen": "YE", "oman": "OM", "uae": "AE", "kuwait": "KW",
-    "bahrain": "BH", "qatar": "QA", "lebanon": "LB", "pakistan": "PK",
-    "bangladesh": "BD", "india": "IN", "sri lanka": "LK", "nepal": "NP",
-    "indonesia": "ID", "philippines": "PH", "thailand": "TH",
-    "malaysia": "MY", "cambodia": "KH", "china": "CN", "japan": "JP",
-    "ukraine": "UA", "poland": "PL", "romania": "RO", "hungary": "HU",
-    "czech": "CZ", "slovakia": "SK", "bulgaria": "BG", "serbia": "RS",
-    "croatia": "HR", "georgia": "GE", "azerbaijan": "AZ",
-    "uzbekistan": "UZ", "kyrgyzstan": "KG", "turkmenistan": "TM",
-    "mongolia": "MN", "belarus": "BY", "estonia": "EE", "latvia": "LV",
-    "lithuania": "LT", "mexico": "MX", "colombia": "CO", "peru": "PE",
-    "chile": "CL", "ecuador": "EC", "paraguay": "PY", "uruguay": "UY",
-    "cuba": "CU", "jamaica": "JM", "dominican": "DO", "guatemala": "GT",
-    "honduras": "HN", "nicaragua": "NI", "costa rica": "CR", "panama": "PA",
+    "ivory coast": "CI", "ivory coast 2": "CI",
+    "côte d'ivoire": "CI", "cote d'ivoire": "CI", "cote divoire": "CI",
+    "guinea bissau": "GW", "guinea-bissau": "GW",
+    "south korea": "KR", "north korea": "KP",
+    "russia": "RU", "tanzania": "TZ",
+    "syria": "SY", "iran": "IR",
+    "vietnam": "VN", "laos": "LA",
+    "moldova": "MD", "congo": "CG",
+    "dr congo": "CD", "palestine": "PS",
+    "taiwan": "TW", "cape verde": "CV",
+    "myanmar": "MM", "eswatini": "SZ",
+    "swaziland": "SZ", "east timor": "TL",
+    "micronesia": "FM", "curacao": "CW",
+    "kosovo": "XK", "lesotho": "LS",
+    "benin": "BJ", "armenia": "AM",
+    "kazakhstan": "KZ", "tajikistan": "TJ",
+    "central african republic": "CF",
+    "venezuela": "VE", "bolivia": "BO",
+    "trinidad": "TT", "haiti": "HT",
+    "cameroon": "CM", "senegal": "SN",
+    "mali": "ML", "niger": "NE",
+    "burkina faso": "BF", "togo": "TG",
+    "ghana": "GH", "sierra leone": "SL",
+    "liberia": "LR", "gambia": "GM",
+    "guinea": "GN", "mauritania": "MR",
+    "ethiopia": "ET", "kenya": "KE",
+    "uganda": "UG", "rwanda": "RW",
+    "zambia": "ZM", "zimbabwe": "ZW",
+    "mozambique": "MZ", "angola": "AO",
+    "malawi": "MW", "madagascar": "MG",
+    "somalia": "SO", "sudan": "SD",
+    "chad": "TD", "nigeria": "NG",
+    "egypt": "EG", "morocco": "MA",
+    "algeria": "DZ", "tunisia": "TN",
+    "libya": "LY", "south africa": "ZA",
+    "iraq": "IQ", "jordan": "JO",
+    "saudi arabia": "SA", "yemen": "YE",
+    "oman": "OM", "uae": "AE",
+    "kuwait": "KW", "bahrain": "BH",
+    "qatar": "QA", "lebanon": "LB",
+    "pakistan": "PK", "bangladesh": "BD",
+    "india": "IN", "sri lanka": "LK",
+    "nepal": "NP", "indonesia": "ID",
+    "philippines": "PH", "thailand": "TH",
+    "malaysia": "MY", "cambodia": "KH",
+    "china": "CN", "japan": "JP",
+    "ukraine": "UA", "poland": "PL",
+    "romania": "RO", "hungary": "HU",
+    "czech": "CZ", "slovakia": "SK",
+    "bulgaria": "BG", "serbia": "RS",
+    "croatia": "HR", "georgia": "GE",
+    "azerbaijan": "AZ", "uzbekistan": "UZ",
+    "kyrgyzstan": "KG", "turkmenistan": "TM",
+    "mongolia": "MN", "belarus": "BY",
+    "estonia": "EE", "latvia": "LV",
+    "lithuania": "LT", "mexico": "MX",
+    "colombia": "CO", "peru": "PE",
+    "chile": "CL", "ecuador": "EC",
+    "paraguay": "PY", "uruguay": "UY",
+    "cuba": "CU", "jamaica": "JM",
+    "dominican": "DO", "guatemala": "GT",
+    "honduras": "HN", "nicaragua": "NI",
+    "costa rica": "CR", "panama": "PA",
     "el salvador": "SV", "belize": "BZ",
 }
 
 COUNTRY_LANGUAGE_MAP = {
-    "VE": "Spanish", "CO": "Spanish", "MX": "Spanish", "PE": "Spanish",
-    "CL": "Spanish", "EC": "Spanish", "BO": "Spanish", "PY": "Spanish",
-    "UY": "Spanish", "CU": "Spanish", "DO": "Spanish", "GT": "Spanish",
-    "HN": "Spanish", "NI": "Spanish", "CR": "Spanish", "PA": "Spanish",
-    "SV": "Spanish", "BZ": "English", "BR": "Portuguese", "PT": "Portuguese",
-    "AO": "Portuguese", "MZ": "Portuguese", "CV": "Portuguese",
-    "GW": "Portuguese", "FR": "French", "BE": "French", "SN": "French",
-    "ML": "French", "BF": "French", "NE": "French", "TG": "French",
-    "BJ": "French", "CI": "French", "CM": "French", "CF": "French",
-    "CD": "French", "CG": "French", "GA": "French", "GN": "French",
-    "MG": "French", "RW": "French", "HT": "French", "DJ": "French",
-    "DE": "German", "AT": "German", "CH": "German", "RU": "Russian",
-    "BY": "Russian", "KZ": "Russian", "UA": "Ukrainian", "PL": "Polish",
-    "RO": "Romanian", "CN": "Chinese", "TW": "Chinese", "HK": "Chinese",
-    "JP": "Japanese", "KR": "Korean", "KP": "Korean", "SA": "Arabic",
-    "EG": "Arabic", "IQ": "Arabic", "SY": "Arabic", "JO": "Arabic",
-    "LB": "Arabic", "YE": "Arabic", "OM": "Arabic", "AE": "Arabic",
-    "KW": "Arabic", "BH": "Arabic", "QA": "Arabic", "MA": "Arabic",
-    "DZ": "Arabic", "TN": "Arabic", "LY": "Arabic", "SD": "Arabic",
-    "SO": "Arabic", "MR": "Arabic", "IN": "Hindi", "NP": "Nepali",
-    "BD": "Bengali", "PK": "Urdu", "LK": "Sinhala", "MM": "Burmese",
-    "TH": "Thai", "VN": "Vietnamese", "KH": "Khmer", "ID": "Indonesian",
-    "MY": "Malay", "PH": "Filipino", "TR": "Turkish", "AZ": "Azerbaijani",
-    "UZ": "Uzbek", "TM": "Turkmen", "KG": "Kyrgyz", "TJ": "Tajik",
-    "AM": "Armenian", "GE": "Georgian", "MN": "Mongolian", "IR": "Persian",
-    "AF": "Dari", "IL": "Hebrew", "ET": "Amharic", "NG": "English",
-    "GH": "English", "KE": "English", "UG": "English", "TZ": "English",
-    "ZM": "English", "ZW": "English", "MW": "English", "ZA": "English",
-    "NA": "English", "BW": "English", "LS": "English", "SL": "English",
-    "LR": "English", "GM": "English", "US": "English", "GB": "English",
-    "CA": "English", "AU": "English", "NZ": "English", "JM": "English",
-    "TT": "English",
+    "VE": "Spanish", "CO": "Spanish", "MX": "Spanish", "AR": "Spanish",
+    "PE": "Spanish", "CL": "Spanish", "EC": "Spanish", "BO": "Spanish",
+    "PY": "Spanish", "UY": "Spanish", "CU": "Spanish", "DO": "Spanish",
+    "GT": "Spanish", "HN": "Spanish", "NI": "Spanish", "CR": "Spanish",
+    "PA": "Spanish", "SV": "Spanish", "BZ": "English",
+    "BR": "Portuguese", "PT": "Portuguese", "AO": "Portuguese",
+    "MZ": "Portuguese", "CV": "Portuguese", "GW": "Portuguese",
+    "FR": "French", "BE": "French", "SN": "French", "ML": "French",
+    "BF": "French", "NE": "French", "TG": "French", "BJ": "French",
+    "CI": "French", "CM": "French", "CF": "French", "CD": "French",
+    "CG": "French", "GA": "French", "GN": "French", "MG": "French",
+    "RW": "French", "HT": "French", "DJ": "French",
+    "DE": "German", "AT": "German", "CH": "German",
+    "RU": "Russian", "BY": "Russian", "KZ": "Russian",
+    "UA": "Ukrainian", "PL": "Polish", "RO": "Romanian",
+    "CN": "Chinese", "TW": "Chinese", "HK": "Chinese",
+    "JP": "Japanese", "KR": "Korean", "KP": "Korean",
+    "SA": "Arabic", "EG": "Arabic", "IQ": "Arabic", "SY": "Arabic",
+    "JO": "Arabic", "LB": "Arabic", "YE": "Arabic", "OM": "Arabic",
+    "AE": "Arabic", "KW": "Arabic", "BH": "Arabic", "QA": "Arabic",
+    "MA": "Arabic", "DZ": "Arabic", "TN": "Arabic", "LY": "Arabic",
+    "SD": "Arabic", "SO": "Arabic", "MR": "Arabic",
+    "IN": "Hindi", "NP": "Nepali", "BD": "Bengali",
+    "PK": "Urdu", "LK": "Sinhala", "MM": "Burmese",
+    "TH": "Thai", "VN": "Vietnamese", "KH": "Khmer",
+    "ID": "Indonesian", "MY": "Malay", "PH": "Filipino",
+    "TR": "Turkish", "AZ": "Azerbaijani", "UZ": "Uzbek",
+    "TM": "Turkmen", "KG": "Kyrgyz", "TJ": "Tajik",
+    "AM": "Armenian", "GE": "Georgian", "MN": "Mongolian",
+    "IR": "Persian", "AF": "Dari", "IL": "Hebrew",
+    "ET": "Amharic", "NG": "English", "GH": "English",
+    "KE": "English", "UG": "English", "TZ": "English",
+    "ZM": "English", "ZW": "English", "MW": "English",
+    "ZA": "English", "NA": "English", "BW": "English",
+    "LS": "English", "SL": "English", "LR": "English",
+    "GM": "English", "US": "English", "GB": "English",
+    "CA": "English", "AU": "English", "NZ": "English",
+    "JM": "English", "TT": "English",
 }
 
 def get_alpha2(country_name):
@@ -146,13 +180,13 @@ def get_alpha2(country_name):
     try:
         c = pycountry.countries.lookup(country_name)
         return c.alpha_2
-    except:
+    except Exception:
         pass
     try:
         results = pycountry.countries.search_fuzzy(country_name)
         if results:
             return results[0].alpha_2
-    except:
+    except Exception:
         pass
     return None
 
@@ -179,7 +213,7 @@ def get_country_from_number(number):
         parsed = phonenumbers.parse("+" + clean, None)
         name = geocoder.country_name_for_number(parsed, "en")
         return name if name else "Unknown"
-    except:
+    except Exception:
         return "Unknown"
 
 # ===================== SERVICE DETECT =====================
@@ -187,7 +221,7 @@ def detect_service(msg):
     msg_upper = msg.upper()
     if any(k in msg_upper for k in ["FACEBOOK", "FB"]):
         return "FACEBOOK"
-    if any(k in msg_upper for k in ["INSTAGRAM", "IG"]):
+    if any(k in msg_upper for k in ["INSTAGRAM", "IG", "INSTA"]):
         return "INSTAGRAM"
     if any(k in msg_upper for k in ["WHATSAPP", "WA"]):
         return "WHATSAPP"
@@ -224,6 +258,7 @@ def extract_otp(message_text, phone_number=None):
 
 # ===================== AUTO DELETE =====================
 def auto_delete(chat_id, message_id, delay=AUTO_DELETE_SEC):
+    """delay সেকেন্ড পর মেসেজ ডিলিট করবে"""
     def _delete():
         time.sleep(delay)
         try:
@@ -232,22 +267,22 @@ def auto_delete(chat_id, message_id, delay=AUTO_DELETE_SEC):
                 "chat_id": chat_id,
                 "message_id": message_id
             }, timeout=10)
-        except:
-            pass
+        except Exception as e:
+            print(f"[Delete Error] {e}")
     threading.Thread(target=_delete, daemon=True).start()
 
-# ===================== GET COUNTRY INFO =====================
+# ===================== Console API =====================
 def get_country_info(number):
     try:
         clean_number = re.sub(r'\D', '', str(number))
         parsed_number = phonenumbers.parse("+" + clean_number, None)
         country_name = geocoder.country_name_for_number(parsed_number, "en")
         alpha2 = get_alpha2(country_name)
-        flag = get_flag(country_name)
-        short = get_short_code(country_name)
-        lang = get_language(alpha2)
+        flag   = get_flag(country_name)
+        short  = get_short_code(country_name)
+        lang   = get_language(alpha2)
         return flag, short, lang, country_name if country_name else "Unknown"
-    except:
+    except Exception:
         return "🌐", "#??", "English", "Unknown"
 
 def build_message(masked_number, flag, short_code, service, lang):
@@ -265,7 +300,7 @@ def build_message(masked_number, flag, short_code, service, lang):
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
-# ===================== SEND MESSAGE =====================
+# ===================== SEND WITH STYLED BUTTONS =====================
 def send_with_styled_buttons(text, otp_code, range_clean):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
@@ -280,6 +315,7 @@ def send_with_styled_buttons(text, otp_code, range_clean):
                         "style": "success"
                     }
                 ],
+
                 [
                     {
                         "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
@@ -298,20 +334,67 @@ def send_with_styled_buttons(text, otp_code, range_clean):
     try:
         res = requests.post(url, json=payload, timeout=10)
         result = res.json()
+
         if result.get("ok"):
+            # ✅ সফল — message_id নিয়ে ৬০ সেকেন্ড পর ডিলিট করো
             message_id = result["result"]["message_id"]
             auto_delete(CHANNEL_ID, message_id, AUTO_DELETE_SEC)
-    except:
-        pass
+        else:
+            # Fallback — pyTelegramBotAPI দিয়ে পাঠাও
+            fallback_markup = types.InlineKeyboardMarkup()
+            fallback_markup.add(types.InlineKeyboardButton(
+                text=f"🟢 {otp_code} 🟢",
+                copy_text=types.CopyTextButton(text=otp_code)
+            ))
 
-def send_otp(number, otp_body, service_name):
-    """OTP channel এ পাঠাব"""
+            fallback_markup.row(
+                types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+                types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+            )
+            sent = bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
+            auto_delete(CHANNEL_ID, sent.message_id, AUTO_DELETE_SEC)
+
+    except Exception as e:
+        print(f"[Send Error] {e}")
+
+def fill_xxx(number_str):
+    def replace_x(match):
+        return ''.join([str(random.randint(0, 9)) for _ in match.group()])
+    filled = re.sub(r'[Xx]+', replace_x, number_str)
+    return re.sub(r'\D', '', filled)
+
+def send_styled_otp(hit):
+    otp_full    = hit.get("message", "")
+    full_number = str(hit.get("range", ""))
+
+    flag, short_code, lang, country = get_country_info(full_number)
+
+    real_num       = re.sub(r'[Xx]', '', full_number)
+    real_digits    = re.sub(r'\D', '', real_num)
+    filled_num     = fill_xxx(full_number)
+    display_masked = filled_num[:4] + "★★" + filled_num[-4:]
+
+    otp_code = extract_otp(otp_full, full_number)
+    if not otp_code:
+        m = re.search(r'\b\d{5,8}\b', otp_full)
+        otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
+
+    service = detect_service(otp_full)
+    text    = build_message(display_masked, flag, short_code, service, lang)
+
+    send_with_styled_buttons(text, otp_code, real_digits)
+
+# ===================== NEXUS OTP HANDLER =====================
+def send_nexus_otp(api_id, number, otp_data):
+    """NEXUS থেকে OTP পেলে channel এ পাঠাব"""
     try:
         flag, short_code, lang, country = get_country_info(number)
+        
         real_digits = re.sub(r'\D', '', str(number))
         filled_num = real_digits
         display_masked = filled_num[:4] + "★★" + filled_num[-4:]
         
+        otp_body = otp_data.get("body", "")
         otp_code = extract_otp(otp_body, number)
         if not otp_code:
             otp_code = re.sub(r'\D', '', otp_body)[:8] or "------"
@@ -320,46 +403,10 @@ def send_otp(number, otp_body, service_name):
         text = build_message(display_masked, flag, short_code, service, lang)
         
         send_with_styled_buttons(text, otp_code, real_digits)
-        print(f"✅ OTP sent: {number} -> {otp_code}")
+        print(f"✅ NEXUS OTP sent: {api_id} -> {otp_code}")
     except Exception as e:
-        print(f"[Send Error] {e}")
+        print(f"[NEXUS Error] {e}")
 
-# ===================== STEX SUCCESS-OTP CHECK =====================
-def check_stex_otp():
-    """STEX এর /success-otp endpoint থেকে OTP fetch করছি"""
-    try:
-        history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
-        
-        # Tracked numbers থেকে OTP check করছি
-        for range_id, number in TRACKING_NUMBERS.items():
-            try:
-                r = requests.get(SUCCESS_OTP_URL, headers=HEADERS, timeout=15)
-                data = r.json()
-                
-                if data.get("meta", {}).get("code") == 200:
-                    for otp_item in data.get("data", {}).get("otps", []):
-                        otp_id = str(otp_item.get("id", ""))
-                        otp_number = otp_item.get("number", "")
-                        otp_message = otp_item.get("message", "")
-                        
-                        # Check if this OTP is for our tracked number
-                        clean_number = re.sub(r'\D', '', str(number))
-                        clean_otp_number = re.sub(r'\D', '', str(otp_number))
-                        
-                        if clean_number == clean_otp_number and otp_id not in history:
-                            send_otp(number, otp_message, "WhatsApp")
-                            history[otp_id] = True
-                            time.sleep(1)
-                
-            except Exception as e:
-                print(f"[STEX Check Error] {e}")
-        
-        # Save history
-        pickle.dump(history, open(DB_FILE, "wb"))
-    except Exception as e:
-        print(f"[STEX History Error] {e}")
-
-# ===================== NEXUS OTP CHECK =====================
 def check_nexus_otp():
     """NEXUS API থেকে OTP check করছি"""
     try:
@@ -379,31 +426,40 @@ def check_nexus_otp():
                     if data.get("ok") and data.get("otps"):
                         for otp_item in data.get("otps", []):
                             otp_id = otp_item.get("id")
-                            otp_body = otp_item.get("body", "")
                             
                             if otp_id and otp_id not in history:
-                                send_otp(number, otp_body, "WhatsApp")
+                                send_nexus_otp(api_id, number, otp_item)
                                 history[otp_id] = True
                                 time.sleep(1)
                 
             except Exception as e:
                 print(f"[NEXUS Check Error] {e}")
         
+        # Save history
         pickle.dump(history, open(NEXUS_DB_FILE, "wb"))
     except Exception as e:
-        print(f"[NEXUS Error] {e}")
+        print(f"[NEXUS History Error] {e}")
 
 def run_bot():
     print("🚀 OTP Bot (STEX + NEXUS) started...")
     while True:
         try:
-            # STEX success-otp check করছি
-            check_stex_otp()
+            # STEX Console API check করছি
+            res = requests.get(CONSOLE_URL, headers=HEADERS, timeout=10).json()
+            if res.get("meta", {}).get("status") == "ok":
+                history = pickle.load(open(DB_FILE, "rb")) if os.path.exists(DB_FILE) else {}
+                for hit in res.get("data", {}).get("hits", []):
+                    msg_time = str(hit.get("time", ""))
+                    if msg_time not in history:
+                        send_styled_otp(hit)
+                        history[msg_time] = True
+                        pickle.dump(history, open(DB_FILE, "wb"))
+                        time.sleep(1.5)
         except Exception as e:
-            print(f"[STEX Polling Error] {e}")
+            print(f"[STEX Error] {e}")
         
+        # NEXUS check করছি
         try:
-            # NEXUS check করছি
             check_nexus_otp()
         except Exception as e:
             print(f"[NEXUS Polling Error] {e}")
