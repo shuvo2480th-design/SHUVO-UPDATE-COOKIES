@@ -285,47 +285,50 @@ def get_country_info(number):
     except Exception:
         return "🌐", "#??", "English", "Unknown"
 
-def build_message(masked_number, flag, short_code, service, lang):
-    current_time = bd_time()
-    return (
-        f"╭────────────╮\n"
-        f"│✦{masked_number}✦\n"
-        f"├────────────┤\n"
-        f"│{flag} {short_code} 👉{service}\n"
-        f"├────────────┤\n"
-        f"│⏰{current_time} #{lang}\n"
-        f"╰────────────╯"
-    )
+def build_message(masked_number, flag, country_name, short_code, service, lang):
+    # নতুন format
+    line1 = f"{flag} {country_name}  🎁 {short_code}"
+    line2 = f"{masked_number} #{lang}"
+    return f"{line1}\n{line2}"
+
+def build_full_message(otp_code, masked_number, flag, country_name, short_code, service, lang):
+    # Full message copy এর জন্য
+    line1 = f"{flag} {country_name}  🎁 {short_code}"
+    line2 = f"{masked_number} #{lang}"
+    line3 = f"🔐 OTP: {otp_code}"
+    return f"{line1}\n{line2}\n{line3}"
 
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
 # ===================== SEND WITH STYLED BUTTONS =====================
-def send_with_styled_buttons(text, otp_code, range_clean):
+def send_with_styled_buttons(text, otp_code, full_message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
         "text": text,
         "reply_markup": {
             "inline_keyboard": [
+                # Row 1: OTP (সবুজ) + Full Message (লাল)
                 [
                     {
-                        "text": f"{otp_code}",
-                        "copy_text": {"text": otp_code},
-                        "style": "success"
-                    }
-                ],
-
-                [
-                    {
-                        "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
-                        "url": PANEL_BOT_URL,
-                        "style": "primary"
+                        "text": f"🟢 {otp_code}",
+                        "copy_text": {"text": otp_code}
                     },
                     {
-                        "text": "𝙼𝙴𝚃𝙷𝙾𝙳",
-                        "url": RANGE_CHANNEL_URL,
-                        "style": "primary"
+                        "text": "Full Message",
+                        "copy_text": {"text": full_message}
+                    }
+                ],
+                # Row 2: NUMBER BOT (নীল) + METHOD (নীল)
+                [
+                    {
+                        "text": "🔵 NUMBER BOT",
+                        "url": PANEL_BOT_URL
+                    },
+                    {
+                        "text": "🔵 METHOD",
+                        "url": RANGE_CHANNEL_URL
                     }
                 ]
             ]
@@ -372,7 +375,7 @@ def send_styled_otp(hit):
     real_num       = re.sub(r'[Xx]', '', full_number)
     real_digits    = re.sub(r'\D', '', real_num)
     filled_num     = fill_xxx(full_number)
-    display_masked = filled_num[:4] + "★★" + filled_num[-4:]
+    display_masked = filled_num[:3] + "𝘚𝘩𝘶𝘷𝘰" + filled_num[-3:]
 
     otp_code = extract_otp(otp_full, full_number)
     if not otp_code:
@@ -380,9 +383,10 @@ def send_styled_otp(hit):
         otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
 
     service = detect_service(otp_full)
-    text    = build_message(display_masked, flag, short_code, service, lang)
+    text    = build_message(display_masked, flag, country, short_code, service, lang)
+    full_msg = build_full_message(otp_code, display_masked, flag, country, short_code, service, lang)
 
-    send_with_styled_buttons(text, otp_code, real_digits)
+    send_with_styled_buttons(text, otp_code, full_msg)
 
 # ===================== NEXUS OTP HANDLER =====================
 def send_nexus_otp(api_id, number, otp_data):
@@ -392,7 +396,7 @@ def send_nexus_otp(api_id, number, otp_data):
         
         real_digits = re.sub(r'\D', '', str(number))
         filled_num = real_digits
-        display_masked = filled_num[:4] + "★★" + filled_num[-4:]
+        display_masked = filled_num[:3] + "𝘚𝘩𝘶𝘷𝘰" + filled_num[-3:]
         
         otp_body = otp_data.get("body", "")
         otp_code = extract_otp(otp_body, number)
@@ -400,9 +404,10 @@ def send_nexus_otp(api_id, number, otp_data):
             otp_code = re.sub(r'\D', '', otp_body)[:8] or "------"
         
         service = detect_service(otp_body)
-        text = build_message(display_masked, flag, short_code, service, lang)
+        text = build_message(display_masked, flag, country, short_code, service, lang)
+        full_msg = build_full_message(otp_code, display_masked, flag, country, short_code, service, lang)
         
-        send_with_styled_buttons(text, otp_code, real_digits)
+        send_with_styled_buttons(text, otp_code, full_msg)
         print(f"✅ NEXUS OTP sent: {api_id} -> {otp_code}")
     except Exception as e:
         print(f"[NEXUS Error] {e}")
