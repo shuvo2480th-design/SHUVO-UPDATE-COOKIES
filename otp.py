@@ -285,50 +285,56 @@ def get_country_info(number):
     except Exception:
         return "🌐", "#??", "English", "Unknown"
 
-def build_message(masked_number, flag, country_name, short_code, service, lang):
-    # নতুন format
-    line1 = f"{flag} {country_name}  🎁 {short_code}"
-    line2 = f"{masked_number} #{lang}"
-    return f"{line1}\n{line2}"
-
-def build_full_message(otp_code, masked_number, flag, country_name, short_code, service, lang):
-    # Full message copy এর জন্য
-    line1 = f"{flag} {country_name}  🎁 {short_code}"
-    line2 = f"{masked_number} #{lang}"
-    line3 = f"🔐 OTP: {otp_code}"
-    return f"{line1}\n{line2}\n{line3}"
+def build_message(masked_number, flag, short_code, service, lang):
+    """
+    ফরম্যাট:
+    🇹🇿 #Tanzania  🎁 #FACEBOOK
+      224𝘚𝘩𝘶𝘷𝘰538  #English
+    """
+    country_name = short_code.replace("#","").strip()
+    return (
+        f"{flag} {short_code}  🎁 #{service.upper()}\n"
+        f"  {masked_number}  #{lang}"
+    )
 
 RANGE_CHANNEL_URL = "https://t.me/range_channele"
 PANEL_BOT_URL     = "https://t.me/shuvo_number_bot"
 
 # ===================== SEND WITH STYLED BUTTONS =====================
-def send_with_styled_buttons(text, otp_code, full_message):
+def send_with_styled_buttons(text, otp_code, full_message, range_clean):
+    """
+    বাটন:
+    🟢 OTP কোড (সবুজ)  | 🔴 Full Message (লাল)
+    🔵 NUMBER BOT       | 🔵 METHOD
+    """
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
         "text": text,
         "reply_markup": {
             "inline_keyboard": [
-                # Row 1: OTP (সবুজ) + Full Message (লাল)
                 [
                     {
-                        "text": f"🟢 {otp_code}",
-                        "copy_text": {"text": otp_code}
+                        "text": f"{otp_code}",
+                        "copy_text": {"text": otp_code},
+                        "style": "success"
                     },
                     {
                         "text": "Full Message",
-                        "copy_text": {"text": full_message}
+                        "copy_text": {"text": full_message},
+                        "style": "danger"
                     }
                 ],
-                # Row 2: NUMBER BOT (নীল) + METHOD (নীল)
                 [
                     {
-                        "text": "🔵 NUMBER BOT",
-                        "url": PANEL_BOT_URL
+                        "text": "𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃",
+                        "url": PANEL_BOT_URL,
+                        "style": "primary"
                     },
                     {
-                        "text": "🔵 METHOD",
-                        "url": RANGE_CHANNEL_URL
+                        "text": "𝙼𝙴𝚃𝙷𝙾𝙳",
+                        "url": RANGE_CHANNEL_URL,
+                        "style": "primary"
                     }
                 ]
             ]
@@ -337,26 +343,28 @@ def send_with_styled_buttons(text, otp_code, full_message):
     try:
         res = requests.post(url, json=payload, timeout=10)
         result = res.json()
-
         if result.get("ok"):
-            # ✅ সফল — message_id নিয়ে ৬০ সেকেন্ড পর ডিলিট করো
             message_id = result["result"]["message_id"]
             auto_delete(CHANNEL_ID, message_id, AUTO_DELETE_SEC)
         else:
-            # Fallback — pyTelegramBotAPI দিয়ে পাঠাও
+            # Fallback
             fallback_markup = types.InlineKeyboardMarkup()
-            fallback_markup.add(types.InlineKeyboardButton(
-                text=f"🟢 {otp_code} 🟢",
-                copy_text=types.CopyTextButton(text=otp_code)
-            ))
-
             fallback_markup.row(
-                types.InlineKeyboardButton("🔵 𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
-                types.InlineKeyboardButton("🔵 𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
+                types.InlineKeyboardButton(
+                    text=f"{otp_code}",
+                    copy_text=types.CopyTextButton(text=otp_code)
+                ),
+                types.InlineKeyboardButton(
+                    text="Full Message",
+                    copy_text=types.CopyTextButton(text=full_message)
+                )
+            )
+            fallback_markup.row(
+                types.InlineKeyboardButton("𝙽𝚄𝙼𝙱𝙴𝚁 𝙱𝙾𝚃", url=PANEL_BOT_URL),
+                types.InlineKeyboardButton("𝙼𝙴𝚃𝙷𝙾𝙳", url=RANGE_CHANNEL_URL)
             )
             sent = bot.send_message(CHANNEL_ID, text, reply_markup=fallback_markup)
             auto_delete(CHANNEL_ID, sent.message_id, AUTO_DELETE_SEC)
-
     except Exception as e:
         print(f"[Send Error] {e}")
 
@@ -366,48 +374,66 @@ def fill_xxx(number_str):
     filled = re.sub(r'[Xx]+', replace_x, number_str)
     return re.sub(r'\D', '', filled)
 
+def mask_number(number_str):
+    """
+    নাম্বার format: দেশ কোড + 𝘚𝘩𝘶𝘷𝘰 + শেষের কিছু ডিজিট
+    মোট দৈর্ঘ্য সর্বোচ্চ ৫ ডিজিট দেখাবে (দেশ কোড + ৩ শেষ)
+    উদাহরণ: 2557382345 → 255𝘚𝘩𝘶𝘷𝘰345
+    উদাহরণ: 22465451630 → 224𝘚𝘩𝘶𝘷𝘰630
+    """
+    digits = re.sub(r'\D', '', number_str)
+    if len(digits) <= 3:
+        return digits + '𝘚𝘩𝘶𝘷𝘰'
+    # দেশ কোড = প্রথম ১-৩ ডিজিট (সর্বোচ্চ ৩)
+    prefix = digits[:3]
+    suffix = digits[-3:]
+    return f"{prefix}𝘚𝘩𝘶𝘷𝘰{suffix}"
+
 def send_styled_otp(hit):
     otp_full    = hit.get("message", "")
     full_number = str(hit.get("range", ""))
 
     flag, short_code, lang, country = get_country_info(full_number)
 
-    real_num       = re.sub(r'[Xx]', '', full_number)
-    real_digits    = re.sub(r'\D', '', real_num)
-    filled_num     = fill_xxx(full_number)
-    display_masked = filled_num[:3] + "𝘚𝘩𝘶𝘷𝘰" + filled_num[-3:]
+    real_num    = re.sub(r'[Xx]', '', full_number)
+    real_digits = re.sub(r'\D', '', real_num)
+    filled_num  = fill_xxx(full_number)
+    masked      = mask_number(filled_num)   # 255𝘚𝘩𝘶𝘷𝘰538
 
     otp_code = extract_otp(otp_full, full_number)
     if not otp_code:
         m = re.search(r'\b\d{5,8}\b', otp_full)
         otp_code = m.group() if m else re.sub(r'\D', '', otp_full)[:8] or "------"
 
-    service = detect_service(otp_full)
-    text    = build_message(display_masked, flag, country, short_code, service, lang)
-    full_msg = build_full_message(otp_code, display_masked, flag, country, short_code, service, lang)
+    service      = detect_service(otp_full)
+    text         = build_message(masked, flag, short_code, service, lang)
+    full_message = otp_full  # Full Message বাটনে পুরো message কপি হবে
 
-    send_with_styled_buttons(text, otp_code, full_msg)
+    send_with_styled_buttons(text, otp_code, full_message, real_digits)
 
 # ===================== NEXUS OTP HANDLER =====================
 def send_nexus_otp(api_id, number, otp_data):
     """NEXUS থেকে OTP পেলে channel এ পাঠাব"""
     try:
         flag, short_code, lang, country = get_country_info(number)
-        
+
         real_digits = re.sub(r'\D', '', str(number))
-        filled_num = real_digits
-        display_masked = filled_num[:3] + "𝘚𝘩𝘶𝘷𝘰" + filled_num[-3:]
-        
-        otp_body = otp_data.get("body", "")
+        masked      = mask_number(real_digits)   # 255𝘚𝘩𝘶𝘷𝘰538
+
+        otp_body = (
+            otp_data.get("text") or
+            otp_data.get("body") or
+            otp_data.get("message") or ""
+        )
         otp_code = extract_otp(otp_body, number)
         if not otp_code:
             otp_code = re.sub(r'\D', '', otp_body)[:8] or "------"
-        
-        service = detect_service(otp_body)
-        text = build_message(display_masked, flag, country, short_code, service, lang)
-        full_msg = build_full_message(otp_code, display_masked, flag, country, short_code, service, lang)
-        
-        send_with_styled_buttons(text, otp_code, full_msg)
+
+        service      = detect_service(otp_body)
+        text         = build_message(masked, flag, short_code, service, lang)
+        full_message = otp_body
+
+        send_with_styled_buttons(text, otp_code, full_message, real_digits)
         print(f"✅ NEXUS OTP sent: {api_id} -> {otp_code}")
     except Exception as e:
         print(f"[NEXUS Error] {e}")
