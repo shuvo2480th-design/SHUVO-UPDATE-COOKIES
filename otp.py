@@ -32,7 +32,7 @@ def keep_alive():
     t.start()
 
 # ===================== CONFIG =====================
-BOT_TOKEN         = "8510677584:AAEqTxD7dc4EautBJ-W8deQGzvlXnsV_Gdk"
+BOT_TOKEN         = "8510677584:AAE6SPGDbz3VpbNSG_u78vbaJn1tM1bSLkI"
 CHANNEL_ID        = "-1002670575248"
 
 # ===== STEX CONFIG =====
